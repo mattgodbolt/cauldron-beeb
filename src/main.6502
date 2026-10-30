@@ -196,6 +196,7 @@ ENDIF
     \ The data's bank (LOADER's), which the OS paged out for its own ROMs.
     LDA data_bank : STA romshad : STA romsel
     JSR init_system
+    JSR init_sprite_tables
     LDA #0 : STA test_n
     LDA #1 : STA view_sprites
     JSR init_cmaps
@@ -308,6 +309,10 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .row_map        SKIP 24
     ALIGN &100
 .attrs          SKIP 768        ; the Spectrum's attributes, as they would be
+.hi_spread      SKIP 256        ; SPRITE's tables (init_sprite_tables), page-aligned
+.lo_spread      SKIP 256
+.nlit           SKIP 256
+    ASSERT LO(hi_spread) = 0
 .bv             SKIP VARS_LEN   ; the BASIC's variables, the original's 41015 on
 .bslots         SKIP 156        ; its FOR slots (24603 on)
 .attr_save      SKIP 192        ; 51675's buffer (the original's 51700)

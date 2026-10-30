@@ -38,8 +38,8 @@ ZA_AUTO1 spr_mode
 ZA_AUTO1 spr_attr
 ZA_AUTO1 spr_ink                ; the sprite's own colour, a Spectrum ink
 ZA_AUTO1 spr_door               ; a door: its own colour is its cell's
-ZA_AUTO1 spr_fast               ; no row runs past column 31: sprite_cache's way
-ZA_AUTO1 spr_crow               ; the character row sc_... hold
+ZA_AUTO1 spr_fast               ; no row runs past column 31: sprite_segment's way
+ZA_AUTO1 spr_crow               ; sprite_segment's character row
 ZA_AUTO1 spr_shift              ; x MOD 8
 ZA_AUTO1 spr_col                ; x DIV 8
 ZA_AUTO1 spr_cells              ; cells a row covers: w, or w + 1 shifted
@@ -86,7 +86,6 @@ ZA_AUTO1 dst_acol
 .ink
     AND #7 : STA spr_ink
     LDA spr_rows : BEQ done
-    LDA #&FF : STA spr_crow         ; (no cells cached)
     \ Rows that stay in columns 0-31 (as good as all): each cell's place,
     \ scenery and colours are its character row's, worked out once.
     LDA spr_col : CLC : ADC spr_cells
@@ -355,148 +354,219 @@ ZA_AUTO1 fb_home
 ZA_AUTO1 fb_own
 
 \ --- The fast path: a row's cells all in its character row ----------------
-\ For each cell of character row spr_crow (columns spr_col on): its
-\ attribute changed by the mode (once a character row: the modes are
-\ idempotent), its screen address, its scenery's glyph and colour, and
-\ the sprite's colour there.
-.sprite_cache
-{
-    LDA #0 : STA spr_i
-.cell
-    LDA spr_col : CLC : ADC spr_i : STA dst_acol : STA dst_col
-    LDA spr_crow : STA dst_arow
-    JSR sprite_attr
-    LDA spr_crow : LDX spr_i : PHA
-    LDX spr_ink : JSR own_ink : JSR ink_for
-    LDX spr_i : LDA ink_mask : STA sc_own,X
-    PLA : LDX dst_col : JSR cell_at
-    LDX spr_door : BEQ not_door
-    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX : JSR own_ink
-    LDA spr_crow : JSR ink_for
-    LDX spr_i : LDA ink_mask : STA sc_own,X
-.not_door
-    JSR cell_info
-    LDX spr_i : STA sc_home,X
-    LDA cell_bg : STA sc_bglo,X : LDA cell_bg+1 : STA sc_bghi,X
-    LDA cell_scr : STA sc_lo,X : LDA cell_scr+1 : STA sc_hi,X
-    INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
-    RTS
-}
-
 \ The fast path a character row at a time: the rows from spr_line to the
 \ character row's end (or the sprite's), each shifted into seg_buf, the
-\ cells' attributes and cache once, then each cell down its lines. Moves
+\ cells' attributes once, then each cell down its lines. Moves
 \ spr_line, spr_gfx and spr_rows on.
-SEG_ROW = 6                         ; (a row's place in seg_buf: 6 * r, below)
-    ASSERT SEG_ROW >= SPR_MAX_W + 1
 .sprite_segment
 {
     ZA_AUTO2 bgp
     ZA_AUTO1 first                  ; the segment's first line in its cell (0-7)
     ZA_AUTO1 last                   ; ... and one past its last
     ZA_AUTO1 r
-    ZA_AUTO1 seg_x
+    ZA_AUTO2 scr                    ; the cell's line 0, its left half
+    ZA_AUTO2 scr8                   ; ... its right
+    ZA_AUTO1 sbyte                  ; the sprite's byte on this line
+    ZA_AUTO1 scene                  ; the scenery's
+    ZA_AUTO1 bm                     ; B: the half's sprite pixels, spread
+    ZA_AUTO1 m                      ; M: the colour they light in
+    ZA_AUTO1 own
+    ZA_AUTO1 ho
+    ZA_AUTO2 homep                  ; the cells' CELL_HOME, CELL_GLYPH_LO and _HI,
+    ZA_AUTO2 glop                   ; ... indexed by the cell (attr_ptr's too)
+    ZA_AUTO2 ghip
+    ZA_AUTO1 seg_own                ; the sprite's colour byte in this row
+    ZA_AUTO1 t2
+    \ The row's first cell: its attribute and screen addresses, and its
+    \ entries in the cell tables at the same offset as its attribute. The
+    \ fast path's cells don't wrap: the rest follow, a cell on.
     LDA spr_line : LSR A : LSR A : LSR A : STA spr_crow
-    JSR sprite_cache
+    LDX spr_col : JSR cell_at
+    LDA attr_ptr : STA homep : STA glop : STA ghip
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_HOME) - HI(attrs) : STA homep+1
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_GLYPH_LO) - HI(attrs) : STA glop+1
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_GLYPH_HI) - HI(attrs) : STA ghip+1
+    LDA cell_scr : STA scr : LDA cell_scr+1 : STA scr+1
+    \ The cells' attributes, by the mode (as sprite_attr), before any
+    \ colour is read from them (the doors').
+    LDA mask_t : EOR #&FF : AND attr_t : STA t2
+    LDY #0
+.attr
+    LDA (attr_ptr),Y
+    LDX spr_mode : BEQ mode0
+    DEX : BEQ mode1
+    AND mask_t : ORA t2 : STA (attr_ptr),Y      ; mode 2: PO-ATTR
+    JMP attr_next
+.mode0
+    CMP attr_p : BNE attr_next
+    LDA spr_attr : STA (attr_ptr),Y
+    JMP attr_next
+.mode1
+    CMP spr_attr : BNE attr_next
+    LDA attr_p : STA (attr_ptr),Y
+.attr_next
+    INY : CPY spr_cells : BNE attr
+    \ The sprite's own colour in this row (a door's is each cell's, below).
+    LDX spr_ink : JSR own_ink
+    LDA spr_crow : JSR ink_for
+    LDA ink_mask : STA seg_own
     LDA spr_line : AND #7 : STA first
     \ last = first + the rows, at most 8
     CLC : ADC spr_rows : CMP #9 : BCC fits
     LDA #8
 .fits
     STA last
-    \ The rows, shifted.
+    \ The rows, shifted, into seg_buf by column: cell i's line y at 8i + y.
+    LDX spr_shift
+    LDA seg_shift_lo,X : STA seg_row.rjump+1 : STA seg_row.ljump+1
+    LDA seg_shift_hi,X : STA seg_row.rjump+2 : STA seg_row.ljump+2
     LDA #0 : STA r
 .shift
-    JSR sprite_shift
-    LDA r : ASL A : ADC r : ASL A : TAY     ; (6 * r: SEG_ROW)
-    LDX #0
-.copy
-    LDA spr_buf,X : STA seg_buf,Y
-    INY : INX : CPX spr_cells : BNE copy
+    LDA first : CLC : ADC r : TAX
+    JSR seg_row
     LDA spr_gfx : CLC : ADC spr_w : STA spr_gfx
     BCC same : INC spr_gfx+1
 .same
     INC r
     LDA first : CLC : ADC r : CMP last : BNE shift
-    \ Each cell, down its lines: per half-line, the old byte keeps what
-    \ the sprite's pixels don't touch (inv_spread), and the pixels the XOR
-    \ lights take mask: the scenery's colour where the scenery is lit, the
-    \ sprite's where it isn't.
+    \ Each cell, down its lines, Y the line in the cell. Per half-line,
+    \ with S the screen byte, B the sprite's 4 pixels spread and M the
+    \ colour the pixels it lights take (the scenery's, home, where the
+    \ scenery's lit, the sprite's own where not):
+    \   S' = S EOR (B AND (S OR (M AND nlit[S])))
+    \ the pixels B leaves alone stay, those it toggles that were lit go,
+    \ those it toggles that weren't take M.
     LDA #0 : STA spr_i
 .cell
-    LDX spr_i
-    LDA sc_home,X : STA fb_home
-    LDA sc_own,X : STA fb_own
-    LDA sc_bglo,X : STA bgp : LDA sc_bghi,X : STA bgp+1
-    LDA sc_lo,X : STA fb_scr : LDA sc_hi,X : STA fb_scr+1
-    STX seg_x                       ; (seg_buf's index: 6r + i)
+    LDA seg_own
+    LDX spr_door : BEQ own_set
+    LDY spr_i : LDA (attr_ptr),Y : AND #7 : TAX : JSR own_ink
+    LDA spr_crow : JSR ink_for
+    LDA ink_mask
+.own_set
+    STA own
+    LDY spr_i
+    EOR (homep),Y : STA ho          ; M = own EOR (glyph's pixels AND ho)
+    LDA (glop),Y : STA bgp : LDA (ghip),Y : STA bgp+1
+    LDA scr : ORA #8 : STA scr8     ; (the right half: line + 8)
+    LDA scr+1 : STA scr8+1
+    TYA : ASL A : ASL A : ASL A : CLC : ADC #LO(seg_buf) : STA column+1
+    LDA #HI(seg_buf) : ADC #0 : STA column+2
     LDY first
 .line
-    LDX seg_x
-    LDA seg_buf,X : BEQ next_line
-    STA fb_bits
-    LDA (bgp),Y : STA fb_glyph
-    \ The left half (the top nibbles) at Y.
-    LDA fb_bits : LSR A : LSR A : LSR A : LSR A : BEQ right
-    STA bits
-    LDA fb_glyph : LSR A : LSR A : LSR A : LSR A : JSR mask_of
-    JSR half_at
+.column
+    LDA seg_buf,Y : BEQ next_line   ; (self-modified: this cell's column)
+    STA sbyte
+    LDA (bgp),Y : STA scene
+    LDX sbyte : LDA hi_spread,X : BEQ right
+    STA bm
+    LDX scene : LDA hi_spread,X : AND ho : EOR own : STA m
+    LDA (scr),Y : BEQ left_empty
+    TAX : LDA nlit,X : AND m : ORA (scr),Y : AND bm : EOR (scr),Y : STA (scr),Y
 .right
-    LDA fb_bits : AND #15 : BEQ next_line
-    STA bits
-    TYA : ORA #8 : TAY
-    LDA fb_glyph : AND #15 : JSR mask_of
-    JSR half_at
-    TYA : AND #7 : TAY
+    LDX sbyte : LDA lo_spread,X : BEQ next_line
+    STA bm
+    LDX scene : LDA lo_spread,X : AND ho : EOR own : STA m
+    LDA (scr8),Y : BEQ right_empty
+    TAX : LDA nlit,X : AND m : ORA (scr8),Y : AND bm : EOR (scr8),Y : STA (scr8),Y
 .next_line
-    LDA seg_x : CLC : ADC #SEG_ROW : STA seg_x
-    INY : CPY last : BNE line
-    INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
+    INY : CPY last : BEQ cell_done
+    JMP line
+.cell_done
+    LDA scr : CLC : ADC #16 : STA scr   ; (the next cell's screen)
+    BCC scr_same : INC scr+1
+.scr_same
+    INC spr_i : LDA spr_i : CMP spr_cells : BEQ segment_done
+    JMP cell
+.segment_done
     \ On past the segment.
     LDA last : SEC : SBC first
     PHA : CLC : ADC spr_line : STA spr_line
     PLA : EOR #&FF : SEC : ADC spr_rows : STA spr_rows
     RTS
+    \ An empty byte: the toggled pixels all take M.
+.left_empty
+    LDA bm : AND m : STA (scr),Y
+    JMP right
+.right_empty
+    LDA bm : AND m : STA (scr8),Y
+    JMP next_line
 }
-.seg_buf    SKIP 8 * SEG_ROW
+.seg_buf    SKIP 8 * (SPR_MAX_W + 1)
 
-\ fb_mask for a half-line whose scenery's 4 pixels are A: the scenery's
-\ colour (fb_home) where they're lit, the sprite's (fb_own) where not.
-.mask_of
+\ One row at spr_gfx shifted right by spr_shift into seg_buf at X, 8 on
+\ a cell, as sprite_shift does it: a byte at a time in A, the bits it
+\ pushes out kept in t for the next cell. Shifts 1-4 go right through a
+\ chain of LSR A : ROR t entered at the shift's length, 5-7 left by 8 less
+\ (ASL A : ROL t), the jumps set per segment (seg_rjump, seg_ljump).
+.seg_row
 {
-    BEQ none
-    TAX
-    LDA spread,X : AND fb_home : STA fb_mask
-    LDA inv_spread,X : AND fb_own : ORA fb_mask : STA fb_mask
+    ZA_AUTO1 t
+    ZA_AUTO1 prev                   ; the bits the last byte left for this cell
+    ZA_AUTO1 a_next
+    LDY #0 : STY prev
+    LDA spr_shift : BEQ plain
+    CMP #5 : BCS left
+.rbyte
+    LDA #0 : STA t
+    LDA (spr_gfx),Y
+.rjump
+    JMP r4                          ; (self-modified: the shift's entry)
+    ZA_CANJUMP r1, r2, r3, r4
+.r4 LSR A : ROR t
+.r3 LSR A : ROR t
+.r2 LSR A : ROR t
+.r1 LSR A : ROR t
+    ORA prev : STA seg_buf,X
+    LDA t : STA prev
+    TXA : CLC : ADC #8 : TAX
+    INY : CPY spr_w : BNE rbyte
+    LDA prev : STA seg_buf,X        ; (the extra cell a shift spills into)
     RTS
-.none
-    LDA fb_own : STA fb_mask
+.plain
+    LDA (spr_gfx),Y : STA seg_buf,X
+    TXA : CLC : ADC #8 : TAX
+    INY : CPY spr_w : BNE plain
+    RTS
+.left
+.lbyte
+    LDA #0 : STA t
+    LDA (spr_gfx),Y
+.ljump
+    JMP l3                          ; (self-modified)
+    ZA_CANJUMP l1, l2, l3
+.l3 ASL A : ROL t
+.l2 ASL A : ROL t
+.l1 ASL A : ROL t
+    STA a_next
+    LDA t : ORA prev : STA seg_buf,X
+    LDA a_next : STA prev
+    TXA : CLC : ADC #8 : TAX
+    INY : CPY spr_w : BNE lbyte
+    LDA prev : STA seg_buf,X
     RTS
 }
-\ XOR the 4 pixels `bits` onto the byte at (fb_scr),Y: what they leave
-\ alone stays, what they clear goes, what they light takes fb_mask.
-.half_at
-{
-    LDA (fb_scr),Y : TAX
-    LDA lit_nib,X : EOR #15 : AND bits : TAX    ; (unlit and XORed: lit now)
-    LDA spread,X : AND fb_mask : STA fb_new
-    LDX bits
-    LDA (fb_scr),Y : AND inv_spread,X : ORA fb_new
-    STA (fb_scr),Y
-    RTS
-}
-\ The pixels a nibble doesn't have, spread into both halves of a byte.
-.inv_spread
-FOR n = 0..15
-    EQUB (15 - n) * &11
-NEXT
-ZA_AUTO1 fb_mask
-ZA_AUTO1 fb_new
-ZA_AUTO1 bits
+\ seg_row's chain entry for each shift (0: none; 5-7: left by 8 less).
+.seg_shift_lo
+    EQUB LO(seg_row.r1), LO(seg_row.r1), LO(seg_row.r2), LO(seg_row.r3), LO(seg_row.r4), LO(seg_row.l3), LO(seg_row.l2), LO(seg_row.l1)
+.seg_shift_hi
+    EQUB HI(seg_row.r1), HI(seg_row.r1), HI(seg_row.r2), HI(seg_row.r3), HI(seg_row.r4), HI(seg_row.l3), HI(seg_row.l2), HI(seg_row.l1)
 
-.sc_lo      SKIP SPR_MAX_W + 1
-.sc_hi      SKIP SPR_MAX_W + 1
-.sc_home    SKIP SPR_MAX_W + 1
-.sc_own     SKIP SPR_MAX_W + 1
-.sc_bglo    SKIP SPR_MAX_W + 1
-.sc_bghi    SKIP SPR_MAX_W + 1
+\ hi_spread, lo_spread (a byte's top and bottom nibbles spread into both
+\ halves of a MODE 1 byte) and nlit (a MODE 1 byte's unlit pixels).
+.init_sprite_tables
+{
+    LDX #0
+.byte
+    TXA : LSR A : LSR A : LSR A : LSR A : STA top : TAY
+    LDA spread,Y : STA hi_spread,X
+    TXA : AND #15 : TAY
+    LDA spread,Y : STA lo_spread,X
+    TXA : ORA top : AND #15 : EOR #15 : TAY
+    LDA spread,Y : STA nlit,X
+    INX : BNE byte
+    RTS
+}
+ZA_AUTO1 top
+ZA_AUTO1 bits                       ; sprite_halves': the sprite's 4 pixels in this half
+

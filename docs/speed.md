@@ -18,14 +18,14 @@ estimates from cycle counts and models, to be measured as each lands.
 
 ## SPRITE (the data and the loop)
 
-1. Table-driven half-byte update: `new = S EOR (B AND (S OR (M AND
+1. (Done.) Table-driven half-byte update: `new = S EOR (B AND (S OR (M AND
    nlit[S])))`, `M = O EOR (spread[glyph] AND (H EOR O))`, with 256-byte
    `hi_spread`/`lo_spread` tables. Checked exhaustively against
    `mask_of` + `half_at`. About 31-38K.
-2. The cells' setup once per call, stepped per character row (+32 for
+2. (Done, per character row.) The cells' setup once per call, stepped per character row (+32 for
    attrs and the cell tables, +512 for the screen) instead of
    `sprite_cache` per segment. About 25K.
-3. The shift fused into a column-major `seg_buf`, unrolled `LSR A : ROR
+3. (Done.) The shift fused into a column-major `seg_buf`, unrolled `LSR A : ROR
    t` chains entered by self-modified jumps, no `spr_buf` copy. About
    18-25K.
 4. Small: a page lookup for `sprite_gfx`'s regions; page-aligned tables.

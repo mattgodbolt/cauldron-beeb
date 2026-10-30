@@ -373,3 +373,23 @@ enough of the logic bank for 130 native statements (`NATIVE`). A pass in
 flight: about 264K cycles median (5 frames is 200K). `tools/sample.mjs`
 charges code in the sideways window to the last label below it
 (`no_ram_end`): that's the native statements.
+
+### SPRITE: the three steps of docs/speed.md
+
+1. The half-byte update by table: `S' = S EOR (B AND (S OR (M AND
+   nlit[S])))`, `M = own EOR (spread[glyph] AND (home EOR own))`, with
+   `hi_spread`, `lo_spread` and `nlit` made at start-up in the workspace
+   (in the file they pushed CAULDRN's end into the screen). `seg_buf` is
+   by column, read through a self-modified load; the right half has its
+   own pointer.
+2. The cells set up once per character row, not cell by cell: one
+   `cell_at`, the cell tables through pointers sharing `attr_ptr`'s low
+   byte, the sprite's own colour once (a door's still per cell, after
+   the attributes); `sprite_cache` and its arrays went.
+3. The shift straight into `seg_buf` (`seg_row`), a byte at a time in A
+   through `LSR A : ROR t` or `ASL A : ROL t` chains entered by a
+   self-modified jump; the slow path keeps `sprite_shift`.
+
+A pass in flight: 264K, 248K, 221K, 210K cycles median after each (5
+frames is 200K), the fastest passes under it. `make check` passes. Main
+RAM's workspace is nearly full now (the tables).
