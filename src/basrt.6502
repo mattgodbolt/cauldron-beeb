@@ -1,0 +1,177 @@
+\ ***************************************************************************
+\ The runtime of the compiled BASIC (tools/bas2asm.py, decision 10): the
+\ original's library routines with their own semantics
+\ (docs/research/compiler.md), and the port's places for what the
+\ original's code names: its system variables, its variables (bv, in the
+\ original's layout), its FOR slots.
+\
+\ The compiled code keeps a word in acc (a second operand in arg); byte
+\ values go in A.
+\ ***************************************************************************
+
+\ Shift-and-add on the magnitudes, as 24880 does it, with its quirk: the
+\ carry out of a partial sum isn't lost but rotated into the multiplicand
+\ (RL E), whose top bit comes back into the multiplier (RR B). The
+\ 6502's ROR and ROL keep the carry where the Z80's RR and RL do, so the
+\ loop is the original's instruction for instruction. acc = acc * arg,
+\ negated if exactly one was negative.
+.rt_mul
+{
+    LDA acc+1 : EOR arg+1 : PHP         ; (N: the signs differ)
+    JSR rt_abs                          ; |acc|: the multiplier (BC)
+    LDA acc : STA mul_b : LDA acc+1 : STA mul_b+1
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    JSR rt_abs                          ; |arg|: the multiplicand (DE)
+    LDA acc : STA mul_d : LDA acc+1 : STA mul_d+1
+    LDA #0 : STA acc : STA acc+1        ; HL
+    LDX #16
+    CLC                                 ; (AND A)
+.bit
+    ROR mul_b+1 : ROR mul_b             ; RR B : RR C
+    BCC no_add                          ; (C clear: RL E shifts in 0)
+    CLC                                 ; ADD HL,DE, its carry kept for RL E
+    LDA acc : ADC mul_d : STA acc
+    LDA acc+1 : ADC mul_d+1 : STA acc+1
+.no_add
+    ROL mul_d : ROL mul_d+1             ; RL E : RL D
+    DEX : BNE bit
+    PLP : BPL done
+    JMP rt_neg
+.done
+    RTS
+}
+
+\ acc = -acc.
+.rt_neg
+{
+    SEC
+    LDA #0 : SBC acc : STA acc
+    LDA #0 : SBC acc+1 : STA acc+1
+    RTS
+}
+
+\ acc = |acc| (32768 stays 32768).
+.rt_abs
+    LDA acc+1 : BMI rt_neg
+    RTS
+
+\ acc = SGN acc: 1, 0 or -1.
+.rt_sgn
+{
+    LDA acc+1 : BMI neg
+    ORA acc : BEQ done
+    LDA #1 : STA acc : LDA #0 : STA acc+1
+.done
+    RTS
+.neg
+    LDA #&FF : STA acc : STA acc+1
+    RTS
+}
+
+\ acc = acc / arg, arg = the remainder, as 24911 leaves them: the
+\ magnitudes divided, the quotient negated if exactly one was negative,
+\ the remainder never; dividing by 0 gives 0 and 0.
+.rt_div
+{
+    LDA acc+1 : EOR arg+1 : PHP
+    JSR rt_abs
+    LDA acc : STA mul_b : LDA acc+1 : STA mul_b+1       ; |dividend|
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    JSR rt_abs
+    LDA acc : STA mul_d : LDA acc+1 : STA mul_d+1       ; |divisor|
+    ORA mul_d : BNE divide
+    STA acc : STA acc+1 : STA arg : STA arg+1           ; by 0: 0, 0
+    PLP
+    RTS
+.divide
+    LDA #0 : STA arg : STA arg+1        ; the remainder
+    LDX #16
+.bit
+    ASL mul_b : ROL mul_b+1             ; the dividend's next bit into the remainder
+    ROL arg : ROL arg+1
+    LDA arg : SEC : SBC mul_d : TAY
+    LDA arg+1 : SBC mul_d+1 : BCC no_sub
+    STA arg+1 : STY arg
+    INC mul_b                           ; (the quotient's bit, where the shift made room)
+.no_sub
+    DEX : BNE bit
+    LDA mul_b : STA acc : LDA mul_b+1 : STA acc+1
+    PLP : BPL done
+    JMP rt_neg
+.done
+    RTS
+}
+
+\ Compare acc with arg, signed: Z set if equal, C set if acc >= arg.
+.rt_cmp
+{
+    LDA acc+1 : CMP arg+1 : BNE differ
+    LDA acc : CMP arg                   ; (high bytes equal: the low decide)
+    RTS
+.differ
+    EOR arg+1 : BMI signs               ; (A was acc+1)
+    LDA acc+1 : CMP arg+1               ; same sign: unsigned order is signed order
+    RTS
+.signs
+    LDA acc+1 : BMI less
+    LDA #1 : SEC                        ; (Z clear)
+    RTS
+.less
+    LDA #1 : CLC
+    RTS
+}
+
+\ NEXT: the variable bv + FOR_VARS + 2X += the step of the FOR slot at
+\ bslots + Y; C set if that took it past the limit (signed, by the step's
+\ sign), as the compiler's NEXT tests. Y is kept.
+FOR_VARS = 41277 - 41015                ; (FOR_VARS in tools/bas2vm.py)
+.rt_next
+{
+    TXA : ASL A : STA nx_ptr
+    LDA #0 : ROL A : STA nx_ptr+1
+    LDA nx_ptr : CLC : ADC #LO(bv + FOR_VARS) : STA nx_ptr
+    LDA nx_ptr+1 : ADC #HI(bv + FOR_VARS) : STA nx_ptr+1
+    TYA : TAX                           ; (X: the slot)
+    LDY #0
+    CLC
+    LDA (nx_ptr),Y : ADC bslots+2,X : STA (nx_ptr),Y : STA acc
+    INY
+    LDA (nx_ptr),Y : ADC bslots+3,X : STA (nx_ptr),Y : STA acc+1
+    LDA bslots,X : STA arg : LDA bslots+1,X : STA arg+1
+    TXA : TAY
+    LDA bslots+3,Y : BMI down
+    JSR rt_cmp
+    BEQ in : BCS done                   ; up: past it if var > limit
+.in
+    CLC
+.done
+    RTS
+.down
+    JSR rt_cmp
+    BCS in                              ; down: past it if var < limit
+    SEC
+    RTS
+}
+
+\ RND acc (25214): the seed (DEFADD in the original, rnd_seed here) becomes
+\ mul(seed + 1, 77), 78 for 0, less 1; the result is |seed| MOD |acc|.
+.rt_rnd
+{
+    LDA acc : PHA : LDA acc+1 : PHA
+    LDA rnd_seed : CLC : ADC #1 : STA acc
+    LDA rnd_seed+1 : ADC #0 : STA acc+1
+    LDA #77 : STA arg : LDA #0 : STA arg+1
+    JSR rt_mul
+    LDA acc : ORA acc+1 : BNE nz
+    LDA #78 : STA acc
+.nz
+    LDA acc : BNE dec_lo : DEC acc+1
+.dec_lo
+    DEC acc
+    LDA acc : STA rnd_seed : LDA acc+1 : STA rnd_seed+1
+    PLA : STA arg+1 : PLA : STA arg
+    JSR rt_div
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    RTS
+}
+

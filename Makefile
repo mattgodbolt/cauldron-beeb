@@ -9,6 +9,9 @@
 #                 room the BBC draws, byte for byte against the original's
 #                 own drawing of them (tools/drawcheck.mjs, tools/drawcmp.py,
 #                 tools/zxscene.py), attributes too
+#   make vm       every statement of the compiled BASIC the interpreter can
+#                 run, against the original's Z80 from the same random state
+#                 (tools/bas2vm.py, src/vm.6502, tools/vmcheck.py)
 #   make sprites  SPRITE on random cases against the original's
 #                 (tools/spritecases.py, tools/spritecheck.mjs)
 #   make splits   the palette splits' timing, the panel's rows checked in a
@@ -41,7 +44,7 @@ GENERATED = build/data/title.bin build/data/landmap.bin
 BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run check draw sprites splits disc fetch zx disasm venv clean
+.PHONY: all run check vm draw sprites splits disc fetch zx disasm venv clean
 
 all: $(TARGET)
 
@@ -52,7 +55,10 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
 
-check: draw sprites splits
+check: vm draw sprites splits
+
+vm: build/cauldron.z80
+	$(PYTHON) tools/vmcheck.py
 
 # SPRITE against the original's on random cases (tools/spritecases.py:
 # the attributes exactly, the pixels by decision 5's model of it).

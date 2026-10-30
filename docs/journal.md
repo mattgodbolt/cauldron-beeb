@@ -189,3 +189,26 @@ then copies the game down over the DFS's workspace. The workspace
 Memory will be the next constraint: the logic's code and its tables are
 still to come, beside the 1-bit graphics in main RAM and a nearly full
 sideways bank. The memory map wants planning before the hag.
+
+### The logic, compiled again
+
+Matt took the brief's recommendations for the pace, sound and controls
+(decisions 6-9), the keys the usual BBC ones (Z, X, :, /, RETURN).
+
+The logic is 1345 BASIC statements. `tools/zxranges.py` measured each
+variable's range in random play outdoors and through each door, and a
+native compiler using them (bytes where they fit) came to 18.4K: too
+big. The same trees as bytecode come to 9.9K (decision 10). The
+interpreter (`src/vm.6502`) works in the original's address space,
+translating PEEK and POKE at run time (`src/vmxlat.6502`), and calls the
+original library's semantics (`src/basrt.6502`), transcribed: the
+multiply's loop is the Z80's instruction for instruction, since the
+6502's ROR and ROL keep the carry where RR and RL do.
+
+`make vm` (`tools/vmcheck.py`) runs each statement on py65's 6502 and on
+the Z80 from the same random variables: 1236 agree, the rest wait for
+what the layers bring (sprites, PRINT, the USR routines, ATTR and POINT,
+the data tables' addresses). It found a branch reading flags a load had
+replaced (NEXT), and two things of its own: statements with no bytecode
+share their label with the next, and RANDOMIZE reads FRAMES, which it
+hadn't copied.

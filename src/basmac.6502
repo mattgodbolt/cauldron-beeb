@@ -1,0 +1,33 @@
+\ ***************************************************************************
+\ Branches for the compiled BASIC (tools/bas2asm.py): short where the
+\ target is in reach, a branch over a JMP where it isn't. Baron settles
+\ forward targets over its passes.
+\ ***************************************************************************
+MACRO JEQ t
+    IF t - (P% + 2) >= -100 AND t - (P% + 2) <= 100
+        BEQ t
+    ELSE
+        BNE @+ : JMP t : .@
+    ENDIF
+ENDMACRO
+MACRO JNE t
+    IF t - (P% + 2) >= -100 AND t - (P% + 2) <= 100
+        BNE t
+    ELSE
+        BEQ @+ : JMP t : .@
+    ENDIF
+ENDMACRO
+MACRO JCC t
+    IF t - (P% + 2) >= -100 AND t - (P% + 2) <= 100
+        BCC t
+    ELSE
+        BCS @+ : JMP t : .@
+    ENDIF
+ENDMACRO
+MACRO JCS t
+    IF t - (P% + 2) >= -100 AND t - (P% + 2) <= 100
+        BCS t
+    ELSE
+        BCC @+ : JMP t : .@
+    ENDIF
+ENDMACRO

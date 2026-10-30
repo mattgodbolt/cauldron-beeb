@@ -55,11 +55,3 @@ screen      = &8000 - SCREEN_ROWS * ROW_BYTES
 \ A byte with all four pixels in logical colour c: MODE 1 keeps a pixel's
 \ high bit in the top nibble and its low bit in the bottom one.
 FUNCTION cbyte(c) = (c AND 2) * &78 + (c AND 1) * &0F
-
-\ Long branches, for when a routine outgrows the 6502's reach.
-MACRO JNE target
-    BEQ @+ : JMP target : .@
-ENDMACRO
-MACRO JEQ target
-    BNE @+ : JMP target : .@
-ENDMACRO

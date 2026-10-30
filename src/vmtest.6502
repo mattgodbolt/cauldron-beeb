@@ -1,0 +1,20 @@
+\ The interpreter alone, with the bytecode and its places, for
+\ tools/vmcheck.py (on py65: none of the rest of the game).
+INCLUDE "../build/vmops.6502"
+INCLUDE "vmzp.6502"
+attr_p = &71 : attr_t = &72 : rnd_seed = &73 : frames = &75 : prbuf = &77 : chars = &79 : stick_res = &7B
+SECTION Test, org = &1000, filename = "T"
+.sprite RTS
+    INCLUDE "vm.6502"
+    INCLUDE "basrt.6502"
+    INCLUDE "vmxlat.6502"
+    INCLUDE "../build/vmtable.6502"
+.bytecode
+    INCLUDE "../build/logic.6502"
+.bytecode_end
+    PRINT "bytecode ", bytecode_end - bytecode
+.bv SKIP 560
+.bslots SKIP 156
+.sprite_blocks SKIP 64
+.test_end
+ENDSECTION

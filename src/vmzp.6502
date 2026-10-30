@@ -1,0 +1,18 @@
+\ ***************************************************************************
+\ The interpreter's zero page (vm.6502, basrt.6502): above the game's own
+\ (main.6502's ZP_FIXED), below &D0 (the OS's VDU status, which a BREAK
+\ reads) and clear of &FC (where the OS's interrupt entry keeps A).
+\ ***************************************************************************
+acc     = &90           ; the word being worked on
+arg     = &92           ; ... a second one
+eptr    = &94           ; vm_xlat's: the port's address
+mul_b   = &96           ; rt_mul's and rt_div's
+mul_d   = &98
+vpc     = &9A           ; the next bytecode
+vsp     = &9C           ; the stack's top, in vs_lo and vs_hi
+vm_w    = &9D           ; an operand word
+nx_ptr  = &9F           ; rt_next's: the variable
+vs_lo   = &A1           ; the stack, VM_STACK words, growing down
+vs_hi   = vs_lo + VM_STACK
+VM_ZP_END = vs_hi + VM_STACK
+    ASSERT VM_ZP_END <= &D0

@@ -174,3 +174,36 @@ The original reads Kempston, Sinclair II or the keys CAPS SHIFT to V
 **Z** left, **X** right, **:** up, **/** down, **RETURN** fire, as CE2's
 are (in jsbeeb on a PC keyboard, : is the ' key); redefinable, and an
 analogue joystick.
+
+## 10. The logic: the original's BASIC compiled again, to bytecode (2026-10-30, provisional)
+
+The original's game logic is integer BASIC compiled to Z80
+(`docs/research/compiler.md`), and `tools/decompile.py` recovers every
+statement as expression trees, each checked against the Z80 running it.
+So instead of transcribing 1345 statements by hand, the port compiles
+the same program again, for the 6502: `tools/bas2vm.py` turns the trees
+into bytecode for a small interpreter (`src/vm.6502`), with the
+original's library's own semantics (`src/basrt.6502`: the multiply's
+leaking carry, the divide's signs, RND). It is the original's decision
+(a compiled BASIC program) ported, and exact by construction:
+`make vm` runs every statement the interpreter can on py65's 6502 and on
+the original's Z80 from the same random state, and they must agree on
+every byte of the variables, the FOR slots, the sprite blocks and the
+seed, and on where they go next.
+
+Why bytecode (figures from 2026-10-30): compiled natively (each node to
+6502, bytes where the measured ranges allow, `tools/zxranges.py`) the
+program is 18.4K, threaded (a JSR an operation) about 20.4K; as bytecode
+9.9K, with an interpreter of about 1.5K. The original's own is 15.4K of
+Z80. The B with 16K of sideways RAM has room for none of the first two.
+
+What it costs is time: an operation's dispatch is about 37 cycles, a
+pass of the original's main loop runs about 1100 statements (in flight,
+measured), so a pass of pure bytecode may not fit decision 6's 5 frames
+with the sprites. Matt (2026-10-30): optimisations come later, space and
+time. The way is open: the same compiler can emit native or threaded
+code for the statements a pass runs most (201 distinct in flight), and
+fuse common sequences of operations.
+
+The variables keep the original's layout, so the port's and the
+original's can be compared word for word, pass by pass.

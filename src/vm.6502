@@ -1,0 +1,322 @@
+\ ***************************************************************************
+\ The interpreter of the compiled BASIC (tools/bas2vm.py, decision 10).
+\
+\ A stack of 16-bit words (vs_lo, vs_hi, from the top at vsp), the
+\ original's operators with the original's library's semantics
+\ (basrt.6502), and the original's memory as the original addresses it:
+\ PEEK, POKE, DPEEK and DPOKE translate their address (vm_xlat), while
+\ the variables, the system variables and the sprite blocks have short
+\ forms the compiler uses for constant addresses. vpc is the next
+\ bytecode; GOSUB keeps the return's on the 6502's stack.
+\ ***************************************************************************
+
+\ Run the bytecode from vpc, for ever (the program never ends).
+.vm_run
+.vm_next
+{
+    LDY #0 : LDA (vpc),Y
+    INC vpc : BNE same : INC vpc+1
+.same
+    TAX
+    LDA vm_hi,X : PHA
+    LDA vm_lo,X : PHA
+    RTS                             ; (to op_<name>, the table holds it less 1)
+}
+
+\ The next bytecode byte into A; the next word into vm_w.
+.vm_byte
+{
+    LDY #0 : LDA (vpc),Y
+    INC vpc : BNE same : INC vpc+1
+.same
+    RTS
+}
+.vm_word
+    JSR vm_byte : STA vm_w
+    JSR vm_byte : STA vm_w+1
+    RTS
+
+\ --- The stack ---------------------------------------------------------------
+\ acc = the top, popped; arg likewise.
+.pop_acc
+    LDX vsp
+    LDA vs_lo,X : STA acc : LDA vs_hi,X : STA acc+1
+    INC vsp
+    RTS
+.pop_arg
+    LDX vsp
+    LDA vs_lo,X : STA arg : LDA vs_hi,X : STA arg+1
+    INC vsp
+    RTS
+\ Push acc, and go on.
+.push_next
+    DEC vsp : LDX vsp
+    LDA acc : STA vs_lo,X : LDA acc+1 : STA vs_hi,X
+    JMP vm_next
+\ Push A (a byte), and go on.
+.push_a_next
+    STA acc : LDA #0 : STA acc+1
+    JMP push_next
+
+\ --- Constants, variables, places -------------------------------------------
+.op_pushb
+    JSR vm_byte : JMP push_a_next
+.op_pushw
+    JSR vm_word
+    LDA vm_w : STA acc : LDA vm_w+1 : STA acc+1
+    JMP push_next
+\ The variable at bv + 2n (load) or bv + 512 + 2n (loadh).
+.op_load
+    JSR vm_byte : ASL A : TAY
+    BCS load_high
+    LDA bv,Y : STA acc : LDA bv+1,Y : STA acc+1
+    JMP push_next
+.load_high
+    LDA bv+256,Y : STA acc : LDA bv+257,Y : STA acc+1
+    JMP push_next
+.op_loadh
+    JSR vm_byte : ASL A : TAY
+    LDA bv+512,Y : STA acc : LDA bv+513,Y : STA acc+1
+    JMP push_next
+.op_store
+    JSR pop_acc
+    JSR vm_byte : ASL A : TAY
+    BCS store_high
+    LDA acc : STA bv,Y : LDA acc+1 : STA bv+1,Y
+    JMP vm_next
+.store_high
+    LDA acc : STA bv+256,Y : LDA acc+1 : STA bv+257,Y
+    JMP vm_next
+.op_storeh
+    JSR pop_acc
+    JSR vm_byte : ASL A : TAY
+    LDA acc : STA bv+512,Y : LDA acc+1 : STA bv+513,Y
+    JMP vm_next
+\ A word or byte at a port address the compiler knew.
+.op_ldw
+    JSR vm_word
+    LDY #0 : LDA (vm_w),Y : STA acc
+    INY : LDA (vm_w),Y : STA acc+1
+    JMP push_next
+.op_ldb
+    JSR vm_word
+    LDY #0 : LDA (vm_w),Y
+    JMP push_a_next
+.op_stw
+    JSR pop_acc
+    JSR vm_word
+    LDY #0 : LDA acc : STA (vm_w),Y
+    INY : LDA acc+1 : STA (vm_w),Y
+    JMP vm_next
+.op_stb
+    JSR pop_acc
+    JSR vm_word
+    LDY #0 : LDA acc : STA (vm_w),Y
+    JMP vm_next
+
+\ PEEK, POKE, DPEEK, DPOKE at an original address (vm_xlat).
+.op_peek
+    JSR pop_acc : JSR vm_xlat
+    LDY #0 : LDA (eptr),Y
+    JMP push_a_next
+.op_dpeek
+    JSR pop_acc : JSR vm_xlat
+    LDY #0 : LDA (eptr),Y : STA acc
+    INY : LDA (eptr),Y : STA acc+1
+    JMP push_next
+.op_poke                            ; (the address on top, the value under it)
+    JSR pop_acc : JSR vm_xlat
+    JSR pop_acc
+    LDY #0 : LDA acc : STA (eptr),Y
+    JMP vm_next
+.op_dpoke
+    JSR pop_acc : JSR vm_xlat
+    JSR pop_acc
+    LDY #0 : LDA acc : STA (eptr),Y
+    INY : LDA acc+1 : STA (eptr),Y
+    JMP vm_next
+\ An array's element's address: base + 2 * (top - 1), the base the
+\ original's (the word after the opcode).
+.op_elem
+    JSR vm_word
+    JSR pop_acc
+    LDA acc : BNE elem_lo : DEC acc+1
+.elem_lo
+    DEC acc
+    ASL acc : ROL acc+1
+    CLC
+    LDA acc : ADC vm_w : STA acc
+    LDA acc+1 : ADC vm_w+1 : STA acc+1
+    JMP push_next
+
+\ eptr = the port's address for the original's address in acc.
+.vm_xlat
+{
+    LDX #0
+.region
+    LDA acc : CMP xlat_from_lo,X
+    LDA acc+1 : SBC xlat_from_hi,X : BCC next
+    LDA acc : CMP xlat_to_lo,X
+    LDA acc+1 : SBC xlat_to_hi,X : BCS next
+    LDA acc : CLC : ADC xlat_add_lo,X : STA eptr
+    LDA acc+1 : ADC xlat_add_hi,X : STA eptr+1
+    RTS
+.next
+    INX : CPX #XLAT_REGIONS : BNE region
+    \ One of the system variables? (Each its own place.)
+    LDX #XLAT_SYS - 1
+.sys
+    LDA acc : CMP xlat_sys_lo,X : BNE no
+    LDA acc+1 : CMP xlat_sys_hi,X : BNE no
+    LDA xlat_sys_plo,X : STA eptr
+    LDA xlat_sys_phi,X : STA eptr+1
+    RTS
+.no
+    DEX : BPL sys
+}
+.vm_bad_address                     ; (global: the tests stop here)
+    JMP vm_bad_address              ; (an address the port doesn't have)
+
+\ --- Arithmetic ----------------------------------------------------------------
+\ Two operands: arg = the top (the right), acc = the one under it.
+.two
+    JSR pop_arg : JMP pop_acc
+.op_add
+    JSR two
+    CLC
+    LDA acc : ADC arg : STA acc
+    LDA acc+1 : ADC arg+1 : STA acc+1
+    JMP push_next
+.op_sub
+    JSR two
+    SEC
+    LDA acc : SBC arg : STA acc
+    LDA acc+1 : SBC arg+1 : STA acc+1
+    JMP push_next
+.op_and
+    JSR two
+    LDA acc : AND arg : STA acc
+    LDA acc+1 : AND arg+1 : STA acc+1
+    JMP push_next
+.op_or
+    JSR two
+    LDA acc : ORA arg : STA acc
+    LDA acc+1 : ORA arg+1 : STA acc+1
+    JMP push_next
+.op_mul
+    JSR two : JSR rt_mul
+    JMP push_next
+.op_div
+    JSR two : JSR rt_div
+    JMP push_next
+.op_mod
+    JSR two : JSR rt_div
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    JMP push_next
+\ Comparisons: 1 or 0 (rt_cmp: Z equal, C acc >= arg, signed).
+.op_eq
+    JSR two : JSR rt_cmp
+    BEQ is_true
+.is_false
+    LDA #0 : JMP push_a_next
+.is_true
+    LDA #1 : JMP push_a_next
+.op_ne
+    JSR two : JSR rt_cmp
+    BNE is_true : BEQ is_false
+.op_lt
+    JSR two : JSR rt_cmp
+    BCC is_true : BCS is_false
+.op_ge
+    JSR two : JSR rt_cmp
+    BCS is_true : BCC is_false
+.op_gt
+    JSR two : JSR rt_cmp
+    BEQ is_false : BCS is_true : BCC is_false
+.op_le
+    JSR two : JSR rt_cmp
+    BEQ is_true : BCC is_true : BCS is_false
+.op_neg
+    JSR pop_acc : JSR rt_neg : JMP push_next
+.op_abs
+    JSR pop_acc : JSR rt_abs : JMP push_next
+.op_sgn
+    JSR pop_acc : JSR rt_sgn : JMP push_next
+.op_not
+    JSR pop_acc
+    LDA acc : ORA acc+1 : BEQ is_true : BNE is_false
+.op_lo
+    JSR pop_acc : LDA acc : JMP push_a_next
+.op_hi
+    JSR pop_acc : LDA acc+1 : JMP push_a_next
+
+\ --- Control -------------------------------------------------------------------
+.op_jz
+    JSR vm_word : JSR pop_acc
+    LDA acc : ORA acc+1 : BEQ jump
+    JMP vm_next
+.op_jnz
+    JSR vm_word : JSR pop_acc
+    LDA acc : ORA acc+1 : BNE jump
+    JMP vm_next
+.op_jmp
+    JSR vm_word
+.jump
+    LDA vm_w : STA vpc : LDA vm_w+1 : STA vpc+1
+    JMP vm_next
+.op_call
+    JSR vm_word
+    LDA vpc+1 : PHA : LDA vpc : PHA
+    JMP jump
+.op_ret
+    PLA : STA vpc : PLA : STA vpc+1
+    JMP vm_next
+.op_drop
+    INC vsp
+    JMP vm_next
+\ FOR's loop-back: the slot at bslots + the byte's offset takes the word.
+.op_forto
+    JSR vm_byte : TAX
+    JSR vm_word
+    LDA vm_w : STA bslots+4,X : LDA vm_w+1 : STA bslots+5,X
+    JMP vm_next
+\ NEXT: the word's low byte the variable (bv + FOR_VARS + 2n), its high
+\ byte the slot's offset; back through the slot unless past the limit.
+.op_next
+{
+    JSR vm_word
+    LDX vm_w : LDY vm_w+1
+    JSR rt_next                     ; (C set: past the limit)
+    BCS done
+    LDA bslots+4,Y : STA vpc : LDA bslots+5,Y : STA vpc+1
+.done
+    JMP vm_next
+}
+
+\ RND: rt_rnd's generator, the original's.
+.op_rnd
+    JSR pop_acc : JSR rt_rnd : JMP push_next
+
+\ --- What only the port can do: each layer brings its own ------------------
+\ (Until then, each stops where the tests can see it.)
+.op_bad
+.op_sprite
+.op_usr
+.op_inkey
+.op_in
+.op_attr
+.op_point
+.op_chan
+.op_out
+.op_str
+.op_num
+.op_temps
+.op_perm
+.op_cls
+.op_pause
+.op_halt
+.op_wait
+.op_beeper
+.op_beep
+.vm_unbuilt                         ; (global: the tests stop here)
+    JMP vm_unbuilt
