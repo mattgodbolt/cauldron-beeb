@@ -3,6 +3,8 @@
 #   make          assemble build/cauldron.ssd (+ build/cauldron.json, the
 #                 symbols, and build/listing.txt)
 #   make run      boot it in jsbeeb, screenshot to shots/run.png
+#   make disc     rebuild from a clean tree and copy the disc to
+#                 cauldron.ssd, which the README links
 #   make fetch    download the Spectrum original into original/
 #   make zx       load the original's tape into build/cauldron.z80, stopped
 #                 at the game's entry (24600, after the loader's PAUSE)
@@ -18,15 +20,16 @@ ASM      = BARON=$(BARON) tools/asm.sh
 MODEL   ?= B-DFS1.2
 export CAULDRON_MODEL = $(MODEL)
 TARGET   = build/cauldron.ssd
+DISC     = cauldron.ssd
 SOURCES  = $(wildcard src/*.6502)
 # Made from the original by the tools, never committed (original/README.md).
 GENERATED = build/data/title.bin
 # Stamped into !BOOT, so a disc says what it is: UTC build time and the
 # commit, with + if the tree had changes.
-BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . 2>/dev/null || echo +)
+BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run fetch zx disasm venv clean
+.PHONY: all run disc fetch zx disasm venv clean
 
 all: $(TARGET)
 
@@ -36,6 +39,13 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
+
+# Always from a clean tree, so the stamp names the commit the disc holds.
+disc:
+	@git diff --quiet HEAD -- . ':(exclude)$(DISC)' || { echo "commit first: the stamp would say +"; exit 1; }
+	rm -f $(TARGET)
+	$(MAKE) $(TARGET)
+	cp $(TARGET) $(DISC)
 
 run: $(TARGET)
 	node tools/play.mjs 'f5,!run' shots/ --disc $(TARGET) --until shown
