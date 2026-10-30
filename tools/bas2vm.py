@@ -44,6 +44,7 @@ OPS = [
     ("chan", 0), ("out", 0), ("str", 0), ("num", 0), ("temps", 0), ("perm", 0), ("cls", 0),
     ("pause", 0), ("halt", 0), ("wait", 2), ("beeper", 0), ("beep", 0),
     ("pass", 1), ("nextall", 2),
+    ("addb", 1), ("ldel", 3), ("stel", 3),
 ]
 # The tops of the main loops: a pass starts there (decision 6's pace, and
 # where the tests compare a pass), with its length in frames.
@@ -97,7 +98,28 @@ class Compiler:
         self.depth += push
         self.max_depth = max(self.max_depth, self.depth)
 
+    def peephole(self):
+        """Common sequences as one operation each (the interpreter's
+        superinstructions): an array's element loaded or stored by a
+        variable index, a byte constant added."""
+        code, out, i = self.code, [], 0
+        while i < len(code):
+            n0 = code[i][0]
+            n1 = code[i + 1][0] if i + 1 < len(code) else None
+            n2 = code[i + 2][0] if i + 2 < len(code) else None
+            if n0 == "load" and n1 == "elem" and n2 in ("dpeek", "dpoke"):
+                out.append(("ldel" if n2 == "dpeek" else "stel", (code[i][1][0], code[i + 1][1][0])))
+                i += 3
+            elif n0 == "pushb" and n1 == "add":
+                out.append(("addb", code[i][1]))
+                i += 2
+            else:
+                out.append(code[i])
+                i += 1
+        self.code = out
+
     def flush(self):
+        self.peephole()
         for name, args in self.code:
             parts = [f"OP_{name.upper()}"]
             for a in args:
@@ -150,6 +172,8 @@ class Compiler:
         elif k == "elemaddr":
             self.expr(e[2])
             self.op("elem", str(e[1]), pop=1, push=1)
+        elif k == "blockaddr" and D.const(D.simplify(e[1])):
+            self.push_const(BLOCKS + 8 * D.simplify(e[1])[1])
         elif k == "blockaddr":
             self.expr(e[1])
             self.push_const(8)

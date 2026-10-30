@@ -147,19 +147,24 @@ ENDIF
     JMP push_a_next
 }
 .op_dpeek
+    JSR pop_acc : JSR dpeek_acc
+    JMP push_next
+\ acc = the word at the original's address acc (through vm_xlat).
+.dpeek_acc
 {
-    JSR pop_acc : JSR vm_xlat
+    JSR vm_xlat
     LDA xk : BNE other
-    LDY #0 : LDA (eptr),Y : STA acc
-    INY : LDA (eptr),Y : STA acc+1
-    JMP push_next
+    LDY #0 : LDA (eptr),Y : TAX
+    INY : LDA (eptr),Y : STA acc+1 : STX acc
+    RTS
 .other
-    CMP #XK_DATA : BNE vm_bad_kind
+    CMP #XK_DATA : BNE bad
     JSR page_data
-    LDY #0 : LDA (eptr),Y : STA acc
-    INY : LDA (eptr),Y : STA acc+1
-    JSR page_logic
-    JMP push_next
+    LDY #0 : LDA (eptr),Y : TAX
+    INY : LDA (eptr),Y : STA acc+1 : STX acc
+    JMP page_logic
+.bad
+    JMP vm_bad_kind
 }
 .op_poke                            ; (the address on top, the value under it)
     JSR pop_acc : JSR vm_xlat
@@ -168,7 +173,9 @@ ENDIF
     LDY #0 : LDA acc : STA (eptr),Y
     JMP vm_next
 .op_dpoke
-    JSR pop_acc : JSR vm_xlat
+    JSR pop_acc
+.dpoke_next                         ; (the address in acc, the value on top)
+    JSR vm_xlat
     LDA xk : BNE vm_bad_kind
     JSR pop_acc
     LDY #0 : LDA acc : STA (eptr),Y
@@ -203,14 +210,51 @@ ENDIF
 .op_elem
     JSR vm_word
     JSR pop_acc
-    LDA acc : BNE elem_lo : DEC acc+1
-.elem_lo
-    DEC acc
+    JSR elem_calc
+    JMP push_next
+\ acc = vm_w + 2 * (acc - 1): an array's element's address.
+.elem_calc
+{
+    LDA acc : BNE lo : DEC acc+1
+.lo DEC acc
     ASL acc : ROL acc+1
     CLC
     LDA acc : ADC vm_w : STA acc
     LDA acc+1 : ADC vm_w+1 : STA acc+1
+    RTS
+}
+
+\ The superinstructions (tools/bas2vm.py's peephole): LDEL i, base pushes
+\ array base's element by variable i (load, elem, dpeek); STEL stores the
+\ top there (load, elem, dpoke); ADDB n adds a byte constant to the top.
+.op_ldel
+    JSR el_index
+    JSR dpeek_acc
     JMP push_next
+.op_stel
+    JSR el_index
+    JMP dpoke_next
+\ acc = the element's address: the variable's index (a byte, as LOAD's),
+\ then the base.
+.el_index
+    JSR vm_byte : ASL A : TAY
+    BCS el_high
+    LDA bv,Y : STA acc : LDA bv+1,Y : STA acc+1
+    JMP el_base
+.el_high
+    LDA bv+256,Y : STA acc : LDA bv+257,Y : STA acc+1
+.el_base
+    JSR vm_word
+    JMP elem_calc
+.op_addb
+{
+    JSR vm_byte
+    LDX vsp
+    CLC : ADC vs_lo,X : STA vs_lo,X
+    BCC done : INC vs_hi,X
+.done
+    JMP vm_next
+}
 
 \ eptr = the port's address for the original's address in acc.
 .vm_xlat
