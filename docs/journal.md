@@ -337,3 +337,14 @@ bank (`NATIVE` in the Makefile); a pass in flight from 332K cycles to
 304K. `tools/vmcheck.py` used to run the compiler itself without the
 native options, so it checked bytecode the disc didn't have: it uses
 the Makefile's now.
+
+### SPRITE a character row at a time
+
+The fast path now works a character row's rows together
+(`sprite_segment`): each row shifted into `seg_buf`, the cells cached
+once, then each cell down its lines with Y the line, every half-byte
+through tables (`mask_of`: the colour mask from the scenery's pixels;
+`half_at`: the XOR, keeping what the sprite's pixels leave alone).
+Rows of the sprite's buffer that are blank skip the cell. The pass in
+flight from 304K cycles to 291K median (5 frames is 200K).
+`make sprites` and `make check` agree.
