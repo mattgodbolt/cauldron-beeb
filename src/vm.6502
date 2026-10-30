@@ -24,10 +24,9 @@ ENDIF
     LDY #0 : LDA (vpc),Y
     INC vpc : BNE same : INC vpc+1
 .same
-    TAX
-    LDA vm_hi,X : PHA
-    LDA vm_lo,X : PHA
-    RTS                             ; (to op_<name>, the table holds it less 1)
+    ASL A : STA dispatch+1          ; (the table is a page's: 2 * the opcode)
+.dispatch
+    JMP (vm_table)
     INCLUDE "../build/vmjump.6502"
 }
 
@@ -36,7 +35,12 @@ IF DEFINED(VMBRK)
     RTS
 ENDIF
 
-\ The next bytecode byte into A; the next word into vm_w.
+\ The next bytecode byte into A, in line (FETCH), or by a call (vm_byte);
+\ the next word into vm_w.
+MACRO FETCH
+    LDY #0 : LDA (vpc),Y
+    INC vpc : BNE @+ : INC vpc+1 : .@
+ENDMACRO
 .vm_byte
 {
     LDY #0 : LDA (vpc),Y
@@ -73,14 +77,14 @@ ENDIF
 
 \ --- Constants, variables, places -------------------------------------------
 .op_pushb
-    JSR vm_byte : JMP push_a_next
+    FETCH : JMP push_a_next
 .op_pushw
     JSR vm_word
     LDA vm_w : STA acc : LDA vm_w+1 : STA acc+1
     JMP push_next
 \ The variable at bv + 2n (load) or bv + 512 + 2n (loadh).
 .op_load
-    JSR vm_byte : ASL A : TAY
+    FETCH : ASL A : TAY
     BCS load_high
     LDA bv,Y : STA acc : LDA bv+1,Y : STA acc+1
     JMP push_next
@@ -93,7 +97,7 @@ ENDIF
     JMP push_next
 .op_store
     JSR pop_acc
-    JSR vm_byte : ASL A : TAY
+    FETCH : ASL A : TAY
     BCS store_high
     LDA acc : STA bv,Y : LDA acc+1 : STA bv+1,Y
     JMP vm_next
@@ -237,7 +241,7 @@ ENDIF
 \ acc = the element's address: the variable's index (a byte, as LOAD's),
 \ then the base.
 .el_index
-    JSR vm_byte : ASL A : TAY
+    FETCH : ASL A : TAY
     BCS el_high
     LDA bv,Y : STA acc : LDA bv+1,Y : STA acc+1
     JMP el_base
@@ -248,7 +252,7 @@ ENDIF
     JMP elem_calc
 .op_addb
 {
-    JSR vm_byte
+    FETCH
     LDX vsp
     CLC : ADC vs_lo,X : STA vs_lo,X
     BCC done : INC vs_hi,X

@@ -183,6 +183,9 @@ SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filena
     SECTION Code, org = &0E00, guard = screen
     ZA_POOL &00..ZP_FIXED-1
 .code_start
+IF NOT(DEFINED(VIEWER))
+    INCLUDE "../build/vmtable.6502"      ; (first: page-aligned)
+ENDIF
 
 .start
 {
@@ -248,7 +251,6 @@ ELSE
     INCLUDE "scroll.6502"
     INCLUDE "sound.6502"
     INCLUDE "vmxlat.6502"
-    INCLUDE "../build/vmtable.6502"
 ENDIF
 
 \ The sprite graphics (tools/mkdata.py's regions), in main RAM.

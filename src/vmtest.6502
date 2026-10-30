@@ -11,6 +11,7 @@ SECTION Test, org = &1000, filename = "T"
     INCLUDE "vm.6502"
     INCLUDE "basrt.6502"
     INCLUDE "vmxlat.6502"
+    ALIGN &100
     INCLUDE "../build/vmtable.6502"
 .bytecode
     INCLUDE "../build/logic.6502"

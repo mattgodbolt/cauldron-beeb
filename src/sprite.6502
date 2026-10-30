@@ -158,22 +158,42 @@ FOR n = 0..SPR_REGIONS-1 : EQUB LO(SPR_START[n] - SPR_FROM[n]) : NEXT
 FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
 
 \ The graphic's row into spr_buf, shifted right by spr_shift: spr_cells
-\ bytes.
+\ bytes. A shift of 5 to 7 is done as one left of 8 less it, with the
+\ row a byte along: the same bytes (the row with a zero byte after it,
+\ shifted right by s, is the row with one before it shifted left by 8 - s),
+\ in at most 4 shifts.
 .sprite_shift
 {
-    LDY spr_w : LDA #0 : STA spr_buf,Y  ; (the byte the shift spills into)
-    DEY
+    LDA #0
+    FOR n = 0..SPR_MAX_W
+        STA spr_buf + n
+    NEXT
+    LDA spr_shift : CMP #5 : BCS left
+    LDY spr_w : DEY
 .copy
     LDA (spr_gfx),Y : STA spr_buf,Y
     DEY : BPL copy
     LDX spr_shift : BEQ done
-.shift
+.right
     LSR spr_buf
     FOR n = 1..SPR_MAX_W
         ROR spr_buf + n
     NEXT
-    DEX : BNE shift
+    DEX : BNE right
 .done
+    RTS
+.left
+    LDY spr_w : DEY
+.copy1
+    LDA (spr_gfx),Y : STA spr_buf+1,Y
+    DEY : BPL copy1
+    LDA #8 : SEC : SBC spr_shift : TAX
+.shl
+    ASL spr_buf + SPR_MAX_W
+    FOR n = SPR_MAX_W-1..0
+        ROL spr_buf + n
+    NEXT
+    DEX : BNE shl
     RTS
 }
 .spr_buf    SKIP SPR_MAX_W + 1

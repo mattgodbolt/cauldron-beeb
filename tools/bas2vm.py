@@ -364,14 +364,13 @@ def write_ops(path):
 
 def write_table(path):
     with open(path, "w") as f:
-        f.write("\\ Made by tools/bas2vm.py: each opcode's handler, less 1 (for RTS).\n")
-        f.write("\\ (vm.6502's dispatch lands on any of them: ZA_CANJUMP's list.)\n")
-        f.write(".vm_lo\n")
+        f.write("\\ Made by tools/bas2vm.py: each opcode's handler, a word each, the\n")
+        f.write("\\ table page-aligned (vm.6502's dispatch: JMP (vm_table + 2 * op)).\n")
+        f.write("    ASSERT LO(P%) = 0\n")
+        f.write(".vm_table\n")
         for name, _ in OPS + [("bad", 0)]:
-            f.write(f"    EQUB LO(op_{name} - 1)\n")
-        f.write(".vm_hi\n")
-        for name, _ in OPS + [("bad", 0)]:
-            f.write(f"    EQUB HI(op_{name} - 1)\n")
+            f.write(f"    EQUW op_{name}\n")
+        f.write("    ASSERT P% - vm_table <= 256\n")
 
 
 def main():
