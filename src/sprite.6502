@@ -119,6 +119,22 @@ ZA_AUTO1 dst_acol
     RTS
 }
 
+\ X = ink X (A kept), unless it's black: a lit pixel can't be black on the BBC (its
+\ lit pixels must be the original's), so black takes ATTR_T's ink, or
+\ white (decision 5: the first monster, drawn before its mode is ever
+\ set, in mode 0 with attribute 0).
+.own_ink
+{
+    CPX #0 : BNE done
+    PHA
+    LDA attr_t : AND #7 : BNE ok
+    LDA #7
+.ok TAX
+    PLA
+.done
+    RTS
+}
+
 \ spr_gfx: the original's address of the graphic, made the port's (the
 \ regions of tools/mkdata.py's sprites.bin, one after another).
 .sprite_gfx
@@ -279,6 +295,7 @@ FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
     LDA spr_door : BEQ not_door
     LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX    ; (the door's: its cell's ink)
 .not_door
+    JSR own_ink
     LDA dst_line : LSR A : LSR A : LSR A : JSR ink_for
     LDA ink_mask : STA fb_own
     LDX spr_i : LDA spr_buf,X : STA fb_bits
@@ -355,11 +372,11 @@ ZA_AUTO1 fb_own
     LDA spr_crow : STA dst_arow
     JSR sprite_attr
     LDA spr_crow : LDX spr_i : PHA
-    LDX spr_ink : JSR ink_for
+    LDX spr_ink : JSR own_ink : JSR ink_for
     LDX spr_i : LDA ink_mask : STA sc_own,X
     PLA : LDX dst_col : JSR cell_at
     LDX spr_door : BEQ not_door
-    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX
+    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX : JSR own_ink
     LDA spr_crow : JSR ink_for
     LDX spr_i : LDA ink_mask : STA sc_own,X
 .not_door

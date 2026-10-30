@@ -306,3 +306,20 @@ became arithmetic, and the sprite regions lost the machine code and
 buffers among them. A bug found by `make sprites`: `sprite_byte` stored
 a value in a file-level ZA_AUTO before calls whose locals the allocator
 may share it with; calls first, stores after, is the safe order.
+
+### The screen in play, and the faster interpreter
+
+`make passes` now compares the screen too, every 10th pass: each
+pixel lit or not, and the attributes, which the port keeps as the
+original's. It found the first monster: drawn before its mode is ever
+set, in mode 0 with attribute 0, black on black, so the port coloured
+its pixels black, which on the BBC is unlit, and its erase then went
+wrong. A black sprite now takes ATTR_T's ink (decision 5). Matt saw the
+witch leave her colour on the cottage on the published disc: the door
+before decision 5's door rule.
+
+The interpreter: superinstructions for an array's element by a
+variable index (load and store) and adding a byte constant, the sprite
+blocks' addresses folded, dispatch through a page-aligned table, and
+sprite rows shifted at most 4 times: a pass in flight about 348K
+cycles, from 480K (5 frames: 200K).

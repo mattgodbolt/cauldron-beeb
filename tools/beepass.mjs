@@ -59,6 +59,7 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
         await stmt(26691);
         await b.keyUp("K4");
         const blocks = [];
+        const screens = [];
         let held = [];
         const bv = b.syms.bv;
         const word = async (a) => b.peekw(bv + a - 41015);
@@ -79,11 +80,14 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
                 await b.write(bv + a - 41015, [val & 255, (val >> 8) & 255]);
             }
             blocks.push(Buffer.from(await b.read("bv", VARS_LEN)).toString("hex"));
+            if ((blocks.length - 1) % 10 === 0)      // (tools/zxpass.py's SCREEN_EVERY)
+                screens.push(Buffer.from([...await b.read(0x5000, 0x3000), ...await b.read("attrs", 768)]).toString("hex"));
             for (const k of held) await b.keyUp(KEYS[k]);
             held = [...keys];
             for (const k of held) await b.keyDown(KEYS[k]);
         }
         writeFileSync(`build/passes/${name}.bbc.json`, JSON.stringify(blocks));
+        writeFileSync(`build/passes/${name}.bbc.screens.json`, JSON.stringify(screens));
         console.log(`${name}: ${blocks.length} passes`);
     } finally {
         await b.close();

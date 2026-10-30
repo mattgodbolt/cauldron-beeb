@@ -16,10 +16,28 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import decompile as D  # noqa: E402
-from zxpass import scenarios  # noqa: E402
+from zxpass import SCREEN_EVERY, scenarios  # noqa: E402
 
 VARS = 41015
 IGNORED = {41397}
+
+
+def screen_diff(scr, bbc):
+    """How the BBC's screen (12K, then 768 attributes) differs from the
+    Spectrum's (6912 bytes): lit pixels and attributes, or None."""
+    lit = 0
+    for line in range(192):
+        for col in range(32):
+            b = scr[((line & 0xC0) << 5) + ((line & 7) << 8) + ((line & 0x38) << 2) + col]
+            base = (line >> 3) * 512 + col * 16 + (line & 7)
+            l, r = bbc[base], bbc[base + 8]
+            got = ((((l >> 4) | l) & 15) << 4) | (((r >> 4) | r) & 15)
+            if got != b:
+                lit += 1
+    attrs = sum(a != b for a, b in zip(scr[6144:], bbc[0x3000:0x3300]))
+    if lit or attrs:
+        return f"{lit} bytes' lit pixels and {attrs} attributes"
+    return None
 
 
 def name(a):
@@ -47,6 +65,17 @@ def main():
                     diffs.append(f"{name(VARS + o)} {va} not {vb}")
             if diffs:
                 first = (i, diffs)
+                break
+        # The screens, every SCREEN_EVERY passes: every pixel lit or not and
+        # the attributes, which the port keeps as the original's (decision 5).
+        zs = json.load(open(f"build/passes/{sc}.zx.screens.json"))
+        bs = json.load(open(f"build/passes/{sc}.bbc.screens.json"))
+        for k in range(min(len(zs), len(bs))):
+            if first and k * SCREEN_EVERY >= first[0]:
+                break
+            d = screen_diff(bytes.fromhex(zs[k]), bytes.fromhex(bs[k]))
+            if d:
+                first = (k * SCREEN_EVERY, [f"the screen: {d}"])
                 break
         if first:
             bad += 1

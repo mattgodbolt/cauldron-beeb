@@ -30,6 +30,7 @@ SEED = 23563
 AFTER_RANDOMIZE = 25606
 HOUSE = 26691
 LOOPS = (30489, 35688)
+SCREEN_EVERY = 10       # the screen too, every 10th pass (make passes compares it)
 KEYS = {"L": "CAPS", "R": "Z", "U": "C", "D": "X", "F": "V"}
 FRAME = 69888
 
@@ -85,6 +86,7 @@ def main():
         run_until(spec, {HOUSE})
         spec.key("4", False)
         blocks = []
+        screens = []
         held = []
         for keys, pokes in passes + [("", [])]:
             run_until(spec, set(LOOPS))
@@ -92,12 +94,15 @@ def main():
                 v = (m[int(v[1:])] | m[int(v[1:]) + 1] << 8) if v.startswith("@") else int(v)
                 m[a], m[a + 1] = v & 255, (v >> 8) & 255
             blocks.append(bytes(m[VARS:VARS_END]).hex())
+            if (len(blocks) - 1) % SCREEN_EVERY == 0:
+                screens.append(bytes(m[16384:16384 + 6912]).hex())
             for k in held:
                 spec.key(KEYS[k], False)
             held = list(keys)
             for k in held:
                 spec.key(KEYS[k], True)
         json.dump(blocks, open(f"{args.out}/{name}.zx.json", "w"))
+        json.dump(screens, open(f"{args.out}/{name}.zx.screens.json", "w"))
         print(f"{name}: {len(blocks)} passes")
 
 

@@ -152,6 +152,14 @@ What it can get wrong: where two sprites overlap and one is erased, the
 other's pixels that come back take the erasing call's colour (outdoors,
 the erase's ATTR_T is white).
 
+A pixel can't be lit and black on the BBC, so a sprite whose colour
+would be black (ink 0) takes ATTR_T's ink, or white if that's black too
+(2026-10-30). It happens once a game: the first monster is drawn before
+its drawing mode is ever set (v41459 is 0 until `monster_mode` runs), in
+mode 0 with attribute 0, which turns its cells black on black: the
+original's first monster is invisible until its first erase, the port's
+shows in its INK. Found by `make passes` comparing the screen.
+
 One exception (2026-10-30): the doors' graphics (door_gfx32 and
 door_gfx24's frames) are scenery that moves, drawn in mode 1 over the
 door's own cells, which the original shows in their red. Their pixels

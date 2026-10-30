@@ -45,7 +45,7 @@ SPRITE = 25431
 SETS = [(42450, 8, 3, 2), (43590, 24, 3, 4), (43878, 24, 3, 20), (50800, 24, 3, 4), (51090, 24, 3, 8),
         (52300, 32, 4, 4), (53532, 24, 2, 4), (52948, 16, 2, 4), (53204, 16, 2, 4), (53532, 24, 2, 4), (53730, 16, 3, 4),
         (54120, 24, 3, 8), (54696, 24, 3, 4), (54984, 24, 3, 4), (55272, 24, 3, 4), (60100, 24, 2, 5)]
-ATTRS = [67, 69, 71, 2, 4, 5, 7, 66, 68]
+ATTRS = [67, 69, 71, 2, 4, 5, 7, 66, 68, 0, 64]
 # The doors' graphics (src/sprite.6502's DOOR_FROM, DOOR_TO): their pixels
 # take their cell's ink (decision 5).
 DOORS = [(52300, 52300 + 4 * 128), (53532, 53532 + 4 * 48)]
@@ -63,7 +63,7 @@ def gen_case(rnd):
                        rnd.randrange(3), rnd.choice(ATTRS)])
     calls = [rnd.randrange(3) for _ in range(rnd.randrange(1, 7))]
     return {"outdoors": outdoors, "scene": scene, "attr_p": rnd.choice([71, 69, 5]),
-            "attr_t": rnd.choice([69, 71, 67, 5]), "mask_t": rnd.choice([0, 0, 0, 0x38]),
+            "attr_t": rnd.choice([69, 71, 67, 5, 0, 64]), "mask_t": rnd.choice([0, 0, 0, 0x38]),
             "blocks": blocks, "calls": calls}
 
 
@@ -123,10 +123,14 @@ def model_calls(case, bg, maps):
                         else:
                             scenery = bg[spec_offset(line, col)] & (0x80 >> p)
                             home = maps[line // 8][bg[6144 + (line // 8) * 32 + col] & 7]
-                            own = maps[line // 8][ink]
+                            o = ink
                             if door:
                                 # (a door: the colour of its cell's ink, after this call's attributes)
-                                own = maps[line // 8][attrs_now[(line // 8) * 32 + col] & 7]
+                                o = attrs_now[(line // 8) * 32 + col] & 7
+                            if o == 0:
+                                # (black can't be lit on the BBC: ATTR_T's ink, or white)
+                                o = (case["attr_t"] & 7) or 7
+                            own = maps[line // 8][o]
                             colour[line][px] = home if scenery else own
     return bits, colour
 
