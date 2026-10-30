@@ -64,3 +64,24 @@ look at the geometry, not the colour scheme. Converted data is made into
 `!BOOT` loading `TITLE` itself failed: the OS echoes `!BOOT`'s next line
 into MODE 7's screen at `&7C00`, inside ours. The screen read back from
 memory matches the converter's bytes on the B and on the Master.
+
+### Below the BASIC: drawing, data, frame, sound
+
+An agent mapped everything outside the compiled BASIC
+(`docs/research/runtime.md`, `graphics.md`, `data.md`,
+`disasm/runtime.ctl`). The game draws in three ways: ROM PRINT with its
+own character sets (the panel, the sky, and the whole landscape, column
+by column), its own blitter for the underground rooms, and one XOR
+sprite routine in the compiler's library that recolours cells as it
+goes. The outdoor "scroll" is a push of a whole screen, 32 character
+steps of shifting the bottom third and printing a new column, with the
+game stopped. No frame sync at all: about ten passes a second, more
+than half of it in the sprite routine outdoors. Sound is the ROM's
+BEEPER: two 21-step chirps and the menu's BEEP.
+
+`tools/zxgfx.py` draws the graphics into `build/gfx/`, and its `--check`
+compares its rendering of all 61 landscape screens and 64 rooms with the
+original's own routines run headless: they match. `tools/zxprobe.py`
+makes the scenes (it reaches the underground by giving the witch a door
+and its key at the door test) and measures pacing, profile, routine
+costs and colour.
