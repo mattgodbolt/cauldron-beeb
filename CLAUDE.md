@@ -121,3 +121,8 @@ make venv       # .venv with SkoolKit and Pillow (needs uv)
 - `!BOOT` mustn't load into screen memory: the OS echoes `!BOOT`'s lines
   into MODE 7's screen at `&7C00`, inside ours. The game loads with OSFILE
   before it takes the machine.
+- Baron's allocator: set a file-level `ZA_AUTO` after the calls that come
+  before its use, not before them (`sprite_byte` lost a value that way).
+- Speed: `node tools/passtime.mjs [keys] [passes]` (frames and cycles a
+  pass; decision 6's is 5 frames, 200K cycles) and `node tools/sample.mjs`
+  (a profile of the game in play).

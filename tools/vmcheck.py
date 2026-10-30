@@ -112,11 +112,22 @@ def main():
     for lo, hi in LOGIC_REGIONS:
         port[f"logictab+{at}"] = (lo, hi)
         at += hi - lo
+    # Empty loops' NEXTs run their whole loop at once (decision 12): one
+    # step of the Z80's isn't theirs to compare (make passes covers them).
+    whole = set()
+    label = None
+    for line in open("build/logic.6502"):
+        if line.startswith(".L"):
+            label = int(line[2:])
+        elif "OP_NEXTALL" in line:
+            whole.add(label)
     agree = disagree = unbuilt = 0
     unmapped = set()
     skipped = 0
     for st in stmts:
         if args.only and st.addr != args.only:
+            continue
+        if st.addr in whole:
             continue
         if st.kind == "wait" or (st.kind == "ev" and (uses_unbuilt(st) or st.events[-1][0] == "return")):
             unbuilt += 1

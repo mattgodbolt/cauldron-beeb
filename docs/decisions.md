@@ -238,3 +238,14 @@ choice is Matt's: 32K, or a disc-streaming edition as CE2S was.
 LOADER fills the banks before CAULDRN loads (it stages each file where
 CAULDRN will load), and the interpreter keeps the logic's bank paged in;
 whatever draws pages the data's in for the time it takes.
+
+## 12. The original's delay loops take no time (2026-10-30, provisional)
+
+The BASIC has an empty loop, `delay` (32512: FOR f = 1 TO 200 : NEXT f),
+which it calls when a pass has less to do (a monster slot empty, the
+witch idle), to keep its pace even: the original's way of doing what
+decision 6's fixed pass length does. Run at the interpreter's speed it
+would eat the BBC's pass. So an empty loop's NEXT (the compiler finds
+them: a FOR whose loop-back is the NEXT itself) runs the loop to its end
+at once: the variable and the FOR slot end as the original's do, which
+`make passes` compares, and no time passes.

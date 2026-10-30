@@ -345,6 +345,46 @@ ENDIF
     JSR vm_word
     LDA vm_w : STA bslots+4,X : LDA vm_w+1 : STA bslots+5,X
     JMP vm_next
+\ NEXT of an empty loop (decision 12): the loop run to its end here, the
+\ variable and the slot as the original's leave them.
+.op_nextall
+{
+    JSR vm_word
+    \ A step of 1 with the variable not past the limit: it ends the limit
+    \ + 1, at once. (Otherwise the loop, step by step.)
+    LDX vm_w : LDY vm_w+1
+    LDA bslots+2,Y : CMP #1 : BNE again
+    LDA bslots+3,Y : BNE again
+    TXA : ASL A : STA nx_ptr
+    LDA #0 : ROL A : STA nx_ptr+1
+    LDA nx_ptr : CLC : ADC #LO(bv + FOR_VARS) : STA nx_ptr
+    LDA nx_ptr+1 : ADC #HI(bv + FOR_VARS) : STA nx_ptr+1
+    STY eptr                        ; (the slot)
+    LDY #0 : LDA (nx_ptr),Y : STA acc
+    INY : LDA (nx_ptr),Y : STA acc+1
+    LDY eptr
+    LDA bslots,Y : STA arg : LDA bslots+1,Y : STA arg+1
+    AND bslots,Y : CMP #&FF : BEQ again     ; (32767's loop wraps: the original's way)
+    LDA arg+1 : CMP #&7F : BNE cmp
+    LDA arg : CMP #&FF : BEQ again
+.cmp
+    JSR rt_cmp                      ; (the variable against the limit)
+    BEQ last : BCS again            ; (past it already: the loop's own way)
+.last
+    LDY eptr
+    CLC
+    LDA bslots,Y : ADC #1 : PHA
+    LDA bslots+1,Y : ADC #0
+    LDY #1 : STA (nx_ptr),Y
+    DEY : PLA : STA (nx_ptr),Y
+    JMP vm_next
+.again
+    LDX vm_w : LDY vm_w+1
+    JSR rt_next                     ; (C set: past the limit)
+    BCC again
+    JMP vm_next
+}
+
 \ NEXT: the word's low byte the variable (bv + FOR_VARS + 2n), its high
 \ byte the slot's offset; back through the slot unless past the limit.
 .op_next

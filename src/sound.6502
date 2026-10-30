@@ -1,0 +1,89 @@
+\ ***************************************************************************
+\ Sound (decision 8): the original's beeper on the SN76489, written
+\ directly. BEEPER's chirps become tones at BEEPER's pitch for BEEPER's
+\ time, the game waiting as the original's does; the menu's BEEP a short
+\ tone. Channel 0 plays them all.
+\ ***************************************************************************
+
+\ Write A to the sound chip, through the System VIA's slow bus. X is kept.
+\ (CE2's: the keyboard put on auto-scan first, or it drives port A's
+\ bit 7 and the byte loses its top bit.)
+.sound_write
+{
+    LDY #&0B : STY sysvia_orb
+    LDY #&FF : STY sysvia_ddra
+    STA sysvia_ora_nh
+    LDY #0 : STY sysvia_orb         ; write enable low
+    LDY #3                          ; ... for 8us
+.hold
+    DEY : BNE hold
+    LDY #8 : STY sysvia_orb
+    RTS
+}
+
+\ Every channel silent (start-up).
+.sound_init
+{
+    LDX #3
+.channel
+    TXA : ASL A : ASL A : ASL A : ASL A : ASL A : ORA #&9F
+    JSR sound_write
+    DEX : BPL channel
+    RTS
+}
+
+\ Channel 0's tone to period acc (10 bits), at full volume.
+.tone_on
+    LDA acc : AND #15 : ORA #&80 : JSR sound_write
+    LDA acc+1 : ASL A : ASL A : ASL A : ASL A : STA tone_hi
+    LDA acc : LSR A : LSR A : LSR A : LSR A : ORA tone_hi : JSR sound_write
+    LDA #&90 : JMP sound_write
+.tone_off
+    LDA #&9F : JMP sound_write
+
+\ Wait Y * 256 + X microseconds on the User VIA's timer 2 (one-shot).
+.wait_us
+    STX usrvia_t2cl : STY usrvia_t2ch       ; starts it; clears its flag
+.wait_t2
+    LDA usrvia_ifr : AND #&20 : BEQ wait_t2
+    RTS
+
+\ BEEPER (ROM 949) with HL = arg and DE = acc: DE * 2 cycles of half-period
+\ 4 * HL + 118 T-states (docs/research/runtime.md, measured). The SN76489's
+\ tone of period N lasts 8N microseconds a cycle, and a T-state is 1/3.5
+\ of one: N = (8 * HL + 236) / 28. The cycles' time, (8 * HL + 236) / 3.5
+\ microseconds each, is 8N less a fraction: 8N each it is.
+.beeper
+{
+    LDA acc : STA beep_cycles       ; (DE: 1 in the original's calls, so a byte)
+    \ N = (8 * HL + 236) / 28, near enough: (2 * HL + 59) / 7.
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    ASL acc : ROL acc+1
+    CLC : LDA acc : ADC #59 : STA acc
+    LDA acc+1 : ADC #0 : STA acc+1
+    LDA #7 : STA arg : LDA #0 : STA arg+1
+    JSR rt_div
+    JSR tone_on
+    \ Two cycles a DE: 16N microseconds.
+.cycle
+    LDA acc : STA beep_us : LDA acc+1 : STA beep_us+1
+    LDX #4
+.times16
+    ASL beep_us : ROL beep_us+1
+    DEX : BNE times16
+    LDX beep_us : LDY beep_us+1 : JSR wait_us
+    DEC beep_cycles : BNE cycle
+    JMP tone_off
+}
+
+\ The menu's BEEP .1, 0: middle C (261.63Hz: period 4MHz / 32 / 261.63)
+\ for a tenth of a second.
+BEEP_C = 478
+.beep_menu
+    LDA #LO(BEEP_C) : STA acc : LDA #HI(BEEP_C) : STA acc+1
+    JSR tone_on
+    LDX #5
+.beep_frame
+    TXA : PHA : JSR wait_vsync : PLA : TAX
+    DEX : BNE beep_frame
+    JMP tone_off

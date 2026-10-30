@@ -61,9 +61,11 @@ UNDER_GLYPHS = 59330
 LOGIC_REGIONS = [(40960, 41015), (41575, 41732), (42169, 42274), (42274, 43589), (45320, 45704), (50388, 50762),
                  (52820, 52850), (56900, 57310)]
 # The sprite graphics (docs/research/data.md), as (first, last + 1): the
-# shots; the skeleton and its set; the witch on foot to the pumpkins
-# (the code among them comes along); the last set.
-SPRITE_REGIONS = [(42450, 42498), (43590, 45318), (50800, 55560), (60100, 60340)]
+# shots; the skeleton and its set; the witch on foot; the doors; the rest
+# to the pumpkins (the controls' code, the attribute buffer and the moon's
+# left out); the last set.
+SPRITE_REGIONS = [(42450, 42498), (43590, 45318), (50800, 51666), (52300, 52812), (52878, 55560),
+                  (60100, 60340)]
 PANEL_GLYPHS = 56130
 SCENERY, SCENERY_END = 55641, 56097
 LAND_FONTS = 64000
@@ -153,6 +155,16 @@ def main():
         f.write("LT_AT = {" + ", ".join(map(str, starts)) + "}\n")
         f.write(f"LT_REGIONS = {len(LOGIC_REGIONS)}\n")
     write("sprites.bin", [b for a, e in SPRITE_REGIONS for b in m[a:e]])
+    with open(os.path.join(args.out, "sprmap.6502"), "w") as f:
+        f.write("\\ Made by tools/mkdata.py: SPRITE_REGIONS, and where each starts in sprites.\n")
+        f.write("SPR_FROM = {" + ", ".join(str(a) for a, _ in SPRITE_REGIONS) + "}\n")
+        f.write("SPR_TO = {" + ", ".join(str(e) for _, e in SPRITE_REGIONS) + "}\n")
+        at, starts = 0, []
+        for a, e in SPRITE_REGIONS:
+            starts.append(at)
+            at += e - a
+        f.write("SPR_AT = {" + ", ".join(map(str, starts)) + "}\n")
+        f.write(f"SPR_REGIONS = {len(SPRITE_REGIONS)}\nSPR_BYTES = {at}\n")
     write("romfont.bin", m[15616:16384])             # the ROM's font, CHARS 15360: glyph c at 8c - 256
     write("bandmaps.bin", [b for band in PANEL_ROWS + [SKY] for b in nearest_map(band)])
     for name, units in (("landpal.bin", [land_cells(m, k) for k in range(LAND_SCREENS)]),

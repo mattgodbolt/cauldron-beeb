@@ -282,3 +282,27 @@ never set before a landscape or room): the front end has its own layout
 now, the original menu's four colours exactly. And the doors' graphics,
 moving scenery, take their cell's colour as the original's do
 (decision 5's exception); the sprite check models it.
+
+### Sound, and the first of the speed
+
+Sound (decision 8): BEEPER's chirps on the SN76489 at BEEPER's pitch
+(the research's measured half-period, 4p + 118 T-states) for its two
+cycles a step, timed on the User VIA's T2; the menu's BEEP middle C for
+a tenth of a second.
+
+`tools/passtime.mjs` measures the frames a pass takes on the BBC, and
+`tools/sample.mjs` profiles. In flight a pass first took 15-25 frames,
+against decision 6's 5: about 40% SPRITE and 45% the interpreter. So
+far: the delay loops run at once (decision 12); SPRITE works a cell's
+place, scenery and colours out once a character row rather than once a
+byte, skips empty halves, and has a fast way over blank background.
+That took the median pass from 770K cycles to about 480K: still more
+than twice the 200K of 5 frames. The interpreter's dispatch and its
+stack are next.
+
+Memory ran out on the way (the game's file ran into the screen):
+tables of the column records' and the rooms' and blocks' addresses
+became arithmetic, and the sprite regions lost the machine code and
+buffers among them. A bug found by `make sprites`: `sprite_byte` stored
+a value in a file-level ZA_AUTO before calls whose locals the allocator
+may share it with; calls first, stores after, is the safe order.

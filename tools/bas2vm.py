@@ -43,7 +43,7 @@ OPS = [
     ("sprite", 0), ("usr", 0), ("rnd", 0), ("inkey", 0), ("in", 0), ("attr", 0), ("point", 0),
     ("chan", 0), ("out", 0), ("str", 0), ("num", 0), ("temps", 0), ("perm", 0), ("cls", 0),
     ("pause", 0), ("halt", 0), ("wait", 2), ("beeper", 0), ("beep", 0),
-    ("pass", 1),
+    ("pass", 1), ("nextall", 2),
 ]
 # The tops of the main loops: a pass starts there (decision 6's pace, and
 # where the tests compare a pass), with its length in frames.
@@ -288,7 +288,10 @@ class Compiler:
             i = (s.var - FOR_VARS) // 2
             if not 0 <= i < 256 or (s.var - FOR_VARS) % 2:
                 raise Unsupported(f"FOR variable {s.var}")
-            self.op("next", str(i | (s.slot - SLOTS) << 8))
+            # An empty loop (its FOR loops back to this NEXT): a delay, the
+            # original's pace; it runs to its end at once (decision 12).
+            empty = s.addr in self.empty_loops
+            self.op("nextall" if empty else "next", str(i | (s.slot - SLOTS) << 8))
         elif s.kind == "wait":
             self.op("wait", s.text.split()[1])
         elif s.kind == "raw":
@@ -301,6 +304,17 @@ class Compiler:
 
     def compile(self):
         bad = []
+        # NEXTs a FOR loops straight back to: statements setting a FOR
+        # slot's loop-back address to the address after them, a NEXT.
+        self.empty_loops = set()
+        nexts = {s.addr for s in self.dec.stmts if s.kind == "next"}
+        for s in self.dec.stmts:
+            for ev in getattr(s, "events", None) or []:
+                if ev[0] == "let":
+                    d = D.simplify(ev[1])
+                    if (D.const(d) and SLOTS <= d[1] < SLOTS_END and (d[1] - SLOTS) % 6 == 4
+                            and ev[2][0] == "n" and ev[2][1] == s.end and s.end in nexts):
+                        self.empty_loops.add(s.end)
         for s in self.dec.stmts:
             self.out.append(f".L{s.addr}")
             self.depth = 0

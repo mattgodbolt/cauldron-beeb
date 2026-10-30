@@ -19,8 +19,16 @@ ZA_AUTO1 room_attr
 {
     ZA_AUTO1 bi                 ; 0-39: which block
     TAX
-    LDA room_lo,X : STA room_types
-    LDA room_hi,X : STA room_types+1
+    \ room_types = rooms + 40 * the room: 32r + 8r.
+    LDA #0 : STA room_types+1
+    TXA : ASL A : ASL A : ASL A : ROL room_types+1  ; 8r (r < 64: 9 bits)
+    STA room_tmp : LDA room_types+1 : STA room_tmp+1
+    LDA room_tmp
+    ASL A : ROL room_types+1 : ASL A : ROL room_types+1     ; 32r
+    CLC : ADC room_tmp : STA room_types
+    LDA room_types+1 : ADC room_tmp+1 : STA room_types+1
+    CLC : LDA room_types : ADC #LO(rooms) : STA room_types
+    LDA room_types+1 : ADC #HI(rooms) : STA room_types+1
     \ Its map (8 bytes a room) and colours (2 a room after all the maps).
     TXA : PHA
     LDY #0 : STY cmap_src+1
@@ -39,9 +47,15 @@ ZA_AUTO1 room_attr
     LDA #0 : STA bi
 .next_block
     LDY bi : LDA (room_types),Y : BEQ skip
-    TAX
-    LDA block_lo,X : STA room_block
-    LDA block_hi,X : STA room_block+1
+    \ room_block = blocks + 24 * the type: 16t + 8t.
+    LDY #0 : STY room_block+1
+    ASL A : ROL room_block+1 : ASL A : ROL room_block+1 : ASL A : ROL room_block+1
+    STA room_tmp : LDY room_block+1 : STY room_tmp+1        ; 8t
+    ASL A : ROL room_block+1                                ; 16t
+    CLC : ADC room_tmp : STA room_block
+    LDA room_block+1 : ADC room_tmp+1 : STA room_block+1    ; 24t
+    CLC : LDA room_block : ADC #LO(blocks) : STA room_block
+    LDA room_block+1 : ADC #HI(blocks) : STA room_block+1
     \ The block's top-left cell: row 3 + 4 * (bi DIV 8), column 4 * (bi MOD 8).
     LDA bi : AND #&F8 : LSR A : ADC #ROOM_ROW : STA room_row
     LDA bi : AND #7 : ASL A : ASL A : STA room_col
@@ -103,21 +117,4 @@ ZA_AUTO1 room_attr
 .room_char_done
     RTS
 
-\ Each room's 40 block types, rooms + 40 * the room.
-.room_lo
-FOR i = 0..63
-    EQUB LO(rooms + 40 * i)
-NEXT
-.room_hi
-FOR i = 0..63
-    EQUB HI(rooms + 40 * i)
-NEXT
-\ Each block type's 24 bytes, blocks + 24 * the type.
-.block_lo
-FOR i = 0..74
-    EQUB LO(blocks + 24 * i)
-NEXT
-.block_hi
-FOR i = 0..74
-    EQUB HI(blocks + 24 * i)
-NEXT
+ZA_AUTO2 room_tmp

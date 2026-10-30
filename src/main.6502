@@ -224,6 +224,7 @@ ELSE
 .slots
     INX : BNE zero
     LDA #VM_STACK : STA vsp
+    JSR sound_init
     JSR page_logic
     LDA #LO(L25592) : STA vpc : LDA #HI(L25592) : STA vpc+1
     JMP vm_run
@@ -245,13 +246,14 @@ ELSE
     INCLUDE "basrt.6502"
     INCLUDE "vmio.6502"
     INCLUDE "scroll.6502"
+    INCLUDE "sound.6502"
     INCLUDE "vmxlat.6502"
     INCLUDE "../build/vmtable.6502"
 ENDIF
 
 \ The sprite graphics (tools/mkdata.py's regions), in main RAM.
 .sprites        INCBIN "../build/data/sprites.bin"
-    ASSERT P% - sprites = SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2] + SPR_LEN[3]
+    ASSERT P% - sprites = SPR_BYTES
 \ The loading screen's four colours (tools/mkscreen.py picks them).
 .palette_phys
     INCBIN "../build/data/title_pal.bin"
@@ -319,6 +321,9 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .land_shown     SKIP 1          ; the landscape screen whose colours show (scroll.6502)
 .menu_mode      SKIP 1          ; the front end's colours show (irq.6502)
 .pass_len       SKIP 1          ; op_pass's: frames a pass
+.tone_hi        SKIP 1          ; sound.6502's
+.beep_cycles    SKIP 1
+.beep_us        SKIP 2
 .pass_vsync     SKIP 1          ; ... and when the last began
 .vm_brk         SKIP 2          ; (the VMBRK build's statement breakpoint)
 .work_end

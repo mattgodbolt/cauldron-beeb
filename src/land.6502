@@ -61,9 +61,9 @@ IF DEFINED(VIEWER)
     LDA land_screen : JSR land_colours
     LDA #0 : STA col
 .column
-    LDY col : LDA (land_ids),Y : TAY
-    LDA landcol_lo,Y : STA land_col
-    LDA landcol_hi,Y : STA land_col+1
+    LDY col : LDA (land_ids),Y : PHA : TAY
+    JSR land_col_at
+    PLA : TAY
     \ The font: A below LAND_FONT_B, B from it (patched into font_add).
     LDX #0
     CPY #LAND_FONT_B : BCC fa
@@ -102,12 +102,21 @@ ENDIF
 .land_font_hi
     EQUB HI(landfont - 256), HI(landfont + 512)
 
-\ Each column id's record, landcols + 14 * (id - 1).
-.landcol_lo
-FOR i = 0..255
-    EQUB LO(landcols + 14 * (i - 1))
-NEXT
-.landcol_hi
-FOR i = 0..255
-    EQUB HI(landcols + 14 * (i - 1))
-NEXT
+\ land_col = column id Y's record, landcols + 14 * (id - 1): 16 * (id - 1)
+\ less 2 * (id - 1). X is kept.
+.land_col_at
+{
+    DEY : TYA
+    LDY #0 : STY lc_two+1
+    ASL A : STA lc_two : ROL lc_two+1           ; 2 * (id - 1)
+    STA land_col : LDA lc_two+1 : STA land_col+1
+    LDA land_col
+    ASL A : ROL land_col+1 : ASL A : ROL land_col+1 : ASL A : ROL land_col+1
+    SEC : SBC lc_two : STA land_col             ; 16 * (id - 1) - 2 * (id - 1)
+    LDA land_col+1 : SBC lc_two+1 : STA land_col+1
+    CLC
+    LDA land_col : ADC #LO(landcols) : STA land_col
+    LDA land_col+1 : ADC #HI(landcols) : STA land_col+1
+    RTS
+}
+ZA_AUTO2 lc_two

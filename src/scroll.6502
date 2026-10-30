@@ -38,9 +38,7 @@ ZA_AUTO 6, cl_ptr               ; the three cell tables' row pointers
     LDA #LO(CHARS_LAND_B) : LDX #HI(CHARS_LAND_B)
 .font
     STA chars : STX chars+1
-    LDY prbuf
-    LDA landcol_lo,Y : STA land_col
-    LDA landcol_hi,Y : STA land_col+1
+    LDY prbuf : JSR land_col_at
     LDA #LAND_ROW : STA col_row
 .cell
     LDA #16 : JSR print_out                     ; INK

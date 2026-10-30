@@ -43,10 +43,13 @@ file give them.
 - **It fits a B with 16K of sideways RAM** [inferred]. The original's
   data is about 24K (41575-65535, less the hand-written code), much of it 1-bit graphics; the compiled code is
   15K of very loose code that 6502 should carry in less.
-- **Done so far:** the harness on both machines, the research, the
-  screen in the Spectrum's geometry, the data in sideways RAM, and every
-  landscape screen and room drawn and checked byte for byte against the
-  original's (`make check`).
+- **Done so far** (when this brief was written): the harness on both
+  machines, the research, the screen in the Spectrum's geometry, the
+  data in sideways RAM, and every landscape screen and room drawn and
+  checked byte for byte against the original's (`make check`). What
+  came after is in `docs/journal.md`: the logic is the original's BASIC
+  compiled again (decision 10), running the whole game and agreeing with
+  the original pass by pass.
 
 ---
 

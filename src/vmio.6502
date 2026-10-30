@@ -218,10 +218,12 @@ ENDIF
 
 \ --- Sound (decision 8: the sound layer) ----------------------------------
 .op_beeper
-    JSR two
+    JSR pop_arg : JSR pop_acc       ; (HL the period, DE the cycles)
+    JSR beeper
     JMP vm_next
-.op_beep
+.op_beep                            ; (only the menu's BEEP .1, 0)
     JSR pop_acc
+    JSR beep_menu
     JMP vm_next
 
 \ --- USR -------------------------------------------------------------------------

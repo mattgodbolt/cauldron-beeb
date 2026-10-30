@@ -38,6 +38,8 @@ ZA_AUTO1 spr_mode
 ZA_AUTO1 spr_attr
 ZA_AUTO1 spr_ink                ; the sprite's own colour, a Spectrum ink
 ZA_AUTO1 spr_door               ; a door: its own colour is its cell's
+ZA_AUTO1 spr_fast               ; no row runs past column 31: sprite_cache's way
+ZA_AUTO1 spr_crow               ; the character row sc_... hold
 ZA_AUTO1 spr_shift              ; x MOD 8
 ZA_AUTO1 spr_col                ; x DIV 8
 ZA_AUTO1 spr_cells              ; cells a row covers: w, or w + 1 shifted
@@ -61,7 +63,7 @@ ZA_AUTO1 dst_acol
     LDA sprite_blocks+7,X : STA spr_attr
     \ The doors' graphics are scenery (decision 5): their pixels take the
     \ colour the original shows them in, their cell's ink.
-    LDX #0 : STX spr_door
+    LDX #0 : STX spr_door : STX spr_fast
 .door
     LDA spr_gfx : CMP door_from_lo,X
     LDA spr_gfx+1 : SBC door_from_hi,X : BCC next_door   ; below its start
@@ -84,14 +86,30 @@ ZA_AUTO1 dst_acol
 .ink
     AND #7 : STA spr_ink
     LDA spr_rows : BEQ done
+    LDA #&FF : STA spr_crow         ; (no cells cached)
+    \ Rows that stay in columns 0-31 (as good as all): each cell's place,
+    \ scenery and colours are its character row's, worked out once.
+    LDA spr_col : CLC : ADC spr_cells
+    CMP #33 : BCS row
+    LDA #1 : STA spr_fast
 .row
     JSR sprite_shift
+    LDA spr_fast : BEQ slow
+    LDA spr_line : LSR A : LSR A : LSR A
+    CMP spr_crow : BEQ cached
+    STA spr_crow
+    JSR sprite_cache
+.cached
+    JSR sprite_fast_row
+    JMP row_done
+.slow
     LDA #0 : STA spr_i
 .cell
     JSR sprite_dest
     JSR sprite_attr
     JSR sprite_byte
     INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
+.row_done
     INC spr_line
     LDA spr_gfx : CLC : ADC spr_w : STA spr_gfx
     BCC next : INC spr_gfx+1
@@ -119,13 +137,9 @@ ZA_AUTO1 dst_acol
 .none
     JMP none                        ; (no graphic there: the original has none)
 }
-SPR_REGIONS = 4
-SPR_FROM = {42450, 43590, 50800, 60100}
-SPR_TO   = {42498, 45318, 55560, 60340}
-\ Where each region starts in sprites.bin: the ones before it, one after
-\ another.
-SPR_LEN = {SPR_TO[0] - SPR_FROM[0], SPR_TO[1] - SPR_FROM[1], SPR_TO[2] - SPR_FROM[2], SPR_TO[3] - SPR_FROM[3]}
-SPR_START = {sprites, sprites + SPR_LEN[0], sprites + SPR_LEN[0] + SPR_LEN[1], sprites + SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2]}
+\ The regions and where each starts in sprites.bin (tools/mkdata.py).
+INCLUDE "../build/data/sprmap.6502"
+SPR_START = sprites + SPR_AT
 .door_from_lo   EQUB LO(DOOR_FROM[0]), LO(DOOR_FROM[1])
 .door_from_hi   EQUB HI(DOOR_FROM[0]), HI(DOOR_FROM[1])
 .door_to_lo     EQUB LO(DOOR_TO[0]), LO(DOOR_TO[1])
@@ -232,52 +246,133 @@ FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
 \ coloured as the head of the file says.
 .sprite_byte
 {
-    ZA_AUTO2 scr
-    ZA_AUTO1 home                   ; the scenery's colour in the cell
-    ZA_AUTO1 own                    ; the sprite's colour in the cell's row
+    \ The cell: its screen address and scenery (the calls first: then the
+    \ fb_ values, which their locals may share)...
+    LDA dst_line : LSR A : LSR A : LSR A : LDX dst_col : JSR cell_at
+    JSR cell_info : STA fb_home
+    LDA dst_line : AND #7 : TAY
+    LDA (cell_bg),Y : STA fb_glyph
+    TYA : ORA cell_scr : STA fb_scr
+    LDA cell_scr+1 : STA fb_scr+1
+    \ ... and the sprite's colour there (ink_for touches only ink_mask).
+    LDX spr_ink
+    LDA spr_door : BEQ not_door
+    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX    ; (the door's: its cell's ink)
+.not_door
+    LDA dst_line : LSR A : LSR A : LSR A : JSR ink_for
+    LDA ink_mask : STA fb_own
+    LDX spr_i : LDA spr_buf,X : STA fb_bits
+}
+\ XOR the byte fb_bits onto the cell's line at fb_scr (its left half, then
+\ its right, 8 on), over scenery fb_glyph in fb_home, the sprite in fb_own.
+.sprite_halves
+{
     ZA_AUTO1 bits                   ; the sprite's 4 pixels in this half
     ZA_AUTO1 bg                     ; the scenery's 4 pixels
     ZA_AUTO1 lit                    ; the screen's lit pixels before
     ZA_AUTO1 new                    ; the pixels the XOR lights
     ZA_AUTO1 out
-    ZA_AUTO1 glyph_byte
-    \ The cell: its screen address, scenery and colours.
-    LDA dst_line : LSR A : LSR A : LSR A : PHA
-    LDX spr_ink : JSR ink_for
-    LDA ink_mask : STA own
-    PLA : PHA : LDX dst_col : JSR cell_at
-    PLA
-    LDX spr_door : BEQ not_door
-    LDY #0 : PHA : LDA (attr_ptr),Y : AND #7 : TAX : PLA
-    JSR ink_for                     ; (the door's: its cell's ink)
-    LDA ink_mask : STA own
-.not_door
-    JSR cell_info
-    STA home
-    LDA dst_line : AND #7 : TAY
-    LDA (cell_bg),Y : STA glyph_byte
-    TYA : ORA cell_scr : STA scr
-    LDA cell_scr+1 : STA scr+1
-    LDX spr_i : LDA spr_buf,X : LSR A : LSR A : LSR A : LSR A : STA bits
-    LDA glyph_byte : LSR A : LSR A : LSR A : LSR A : STA bg
+    LDA fb_bits : BEQ done          ; (nothing to XOR)
+    LSR A : LSR A : LSR A : LSR A : BEQ right
+    STA bits
+    LDA fb_glyph : LSR A : LSR A : LSR A : LSR A : STA bg
     JSR half                        ; the left four pixels
-    LDA scr : ORA #8 : STA scr
-    LDX spr_i : LDA spr_buf,X : AND #15 : STA bits
-    LDA glyph_byte : AND #15 : STA bg
+.right
+    LDA fb_bits : AND #15 : BEQ done
+    STA bits
+    LDA fb_scr : ORA #8 : STA fb_scr
+    LDA fb_glyph : AND #15 : STA bg
     \ Fall into half: the right four.
 .half
     LDY #0
-    LDA (scr),Y : LSR A : LSR A : LSR A : LSR A
-    ORA (scr),Y : AND #15 : STA lit
+    LDA (fb_scr),Y : BNE busy
+    \ Nothing lit there: the sprite's pixels light in its colour, or the
+    \ scenery's where the scenery has them.
+    LDX bits
+    LDA bg : BNE some
+    LDA spread,X : AND fb_own
+    STA (fb_scr),Y
+.done
+    RTS
+.some
+    LDA #0                          ; (the general way, nothing lit)
+.busy
+    TAX : LDA lit_nib,X : STA lit
     \ What stays lit keeps its colour.
     LDA bits : EOR #15 : AND lit : TAX
-    LDA spread,X : AND (scr),Y : STA out
+    LDA spread,X : AND (fb_scr),Y : STA out
     \ What the XOR lights: the scenery's colour, or the sprite's.
     LDA lit : EOR #15 : AND bits : STA new
     AND bg : TAX
-    LDA spread,X : AND home : ORA out : STA out
+    LDA spread,X : AND fb_home : ORA out : STA out
     LDA bg : EOR #15 : AND new : TAX
-    LDA spread,X : AND own : ORA out
-    STA (scr),Y
+    LDA spread,X : AND fb_own : ORA out
+    STA (fb_scr),Y
     RTS
 }
+\ A MODE 1 byte's 4 pixels, lit (non-zero) or not, as a nibble (the
+\ leftmost in bit 3).
+.lit_nib
+FOR b = 0..255
+    EQUB ((b >> 4) OR b) AND 15
+NEXT
+ZA_AUTO2 fb_scr                 ; sprite_halves' cell line
+ZA_AUTO1 fb_bits
+ZA_AUTO1 fb_glyph
+ZA_AUTO1 fb_home
+ZA_AUTO1 fb_own
+
+\ --- The fast path: a row's cells all in its character row ----------------
+\ For each cell of character row spr_crow (columns spr_col on): its
+\ attribute changed by the mode (once a character row: the modes are
+\ idempotent), its screen address, its scenery's glyph and colour, and
+\ the sprite's colour there.
+.sprite_cache
+{
+    LDA #0 : STA spr_i
+.cell
+    LDA spr_col : CLC : ADC spr_i : STA dst_acol : STA dst_col
+    LDA spr_crow : STA dst_arow
+    JSR sprite_attr
+    LDA spr_crow : LDX spr_i : PHA
+    LDX spr_ink : JSR ink_for
+    LDX spr_i : LDA ink_mask : STA sc_own,X
+    PLA : LDX dst_col : JSR cell_at
+    LDX spr_door : BEQ not_door
+    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX
+    LDA spr_crow : JSR ink_for
+    LDX spr_i : LDA ink_mask : STA sc_own,X
+.not_door
+    JSR cell_info
+    LDX spr_i : STA sc_home,X
+    LDA cell_bg : STA sc_bglo,X : LDA cell_bg+1 : STA sc_bghi,X
+    LDA cell_scr : STA sc_lo,X : LDA cell_scr+1 : STA sc_hi,X
+    INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
+    RTS
+}
+
+\ XOR the row in spr_buf onto line spr_line through the cache.
+.sprite_fast_row
+{
+    ZA_AUTO2 bgp
+    LDA #0 : STA spr_i
+.cell
+    LDX spr_i
+    LDA sc_home,X : STA fb_home
+    LDA sc_own,X : STA fb_own
+    LDA sc_bglo,X : STA bgp : LDA sc_bghi,X : STA bgp+1
+    LDA spr_line : AND #7 : TAY
+    LDA (bgp),Y : STA fb_glyph
+    TYA : ORA sc_lo,X : STA fb_scr
+    LDA sc_hi,X : STA fb_scr+1
+    LDA spr_buf,X : STA fb_bits
+    JSR sprite_halves
+    INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
+    RTS
+}
+.sc_lo      SKIP SPR_MAX_W + 1
+.sc_hi      SKIP SPR_MAX_W + 1
+.sc_home    SKIP SPR_MAX_W + 1
+.sc_own     SKIP SPR_MAX_W + 1
+.sc_bglo    SKIP SPR_MAX_W + 1
+.sc_bghi    SKIP SPR_MAX_W + 1
