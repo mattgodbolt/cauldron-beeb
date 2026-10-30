@@ -24,8 +24,12 @@
 
 \ --- The screen ----------------------------------------------------------------
 .op_sprite
-    JSR pop_acc : LDX acc
-    JSR sprite                      ; (no data bank: the sprites are in main RAM)
+    JSR pop_acc
+    \ The sprites are in main RAM, but the scenery's glyphs that decision
+    \ 5's colours read (cell_bg) are the data bank's.
+    JSR page_data
+    LDX acc : JSR sprite
+    JSR page_logic
     JMP vm_next
 
 \ ATTR(row, column), as the library's 25089 forms the address: the

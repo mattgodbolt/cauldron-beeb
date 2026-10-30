@@ -348,3 +348,15 @@ through tables (`mask_of`: the colour mask from the scenery's pixels;
 Rows of the sprite's buffer that are blank skip the cell. The pass in
 flight from 304K cycles to 291K median (5 frames is 200K).
 `make sprites` and `make check` agree.
+
+### SPRITE's colours read the wrong bank
+
+A brainstorming agent found that `op_sprite` called SPRITE with the
+logic bank paged, while the scenery glyphs decision 5's colour rule reads
+(`cell_bg`: landfont, underfont, panelfont) are in the data bank. In
+play, then, a sprite's pixels over scenery took colours chosen from
+bytecode. Lit pixels and `attrs` were right throughout, which is all
+`make passes` compares, and `make sprites` runs in the viewer, where the
+data bank is always paged; so nothing saw it. `op_sprite` pages the data
+bank around the call now. The checks still compare no colours in play: a
+gap.
