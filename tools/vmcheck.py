@@ -4,7 +4,8 @@ the original's Z80 code, from the same random state.
 
     .venv/bin/python tools/vmcheck.py [--trials N] [--seed S] [--only ADDR]
 
-Builds build/vmtest.ssd (src/vmtest.6502) (the interpreter, its runtime and the
+Builds build/vmtest.ssd (src/vmtest.6502, from the Makefile's
+build/logic.6502, native statements and all) (the interpreter, its runtime and the
 bytecode tools/bas2vm.py made, without the rest of the game) and runs it
 on py65's 6502. For each statement whose effects are the interpreter's
 own (stores, branches, GOSUB, FOR, NEXT, the arithmetic, RND), from
@@ -59,7 +60,6 @@ def symbols(path):
 
 def build():
     baron = "../baron/build/src/baron" if os.path.exists("../baron/build/src/baron") else "baron"
-    subprocess.run([sys.executable, "tools/bas2vm.py"], check=True, stdout=subprocess.DEVNULL)
     subprocess.run([baron, "-o", "build/vmtest.ssd", "--opt", "3", "--symbols", "build/vmtest.json",
                     "src/vmtest.6502"], check=True, stdout=subprocess.DEVNULL)
     syms = symbols("build/vmtest.json")

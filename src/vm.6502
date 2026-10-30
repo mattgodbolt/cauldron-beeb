@@ -54,7 +54,12 @@ ENDMACRO
     RTS
 
 \ --- The stack ---------------------------------------------------------------
-\ acc = the top, popped; arg likewise.
+\ acc = the top, popped; arg likewise (POP_ACC: the same, in line).
+MACRO POP_ACC
+    LDX vsp
+    LDA vs_lo,X : STA acc : LDA vs_hi,X : STA acc+1
+    INC vsp
+ENDMACRO
 .pop_acc
     LDX vsp
     LDA vs_lo,X : STA acc : LDA vs_hi,X : STA acc+1
@@ -65,11 +70,17 @@ ENDMACRO
     LDA vs_lo,X : STA arg : LDA vs_hi,X : STA arg+1
     INC vsp
     RTS
-\ Push acc, and go on.
+\ Push acc, and go on (the dispatch in line).
 .push_next
     DEC vsp : LDX vsp
     LDA acc : STA vs_lo,X : LDA acc+1 : STA vs_hi,X
-    JMP vm_next
+    LDY #0 : LDA (vpc),Y
+    INC vpc : BNE push_same : INC vpc+1
+.push_same
+    ASL A : STA push_dispatch+1
+.push_dispatch
+    JMP (vm_table)
+    INCLUDE "../build/vmjump.6502"
 \ Push A (a byte), and go on.
 .push_a_next
     STA acc : LDA #0 : STA acc+1
@@ -96,7 +107,7 @@ ENDMACRO
     LDA bv+512,Y : STA acc : LDA bv+513,Y : STA acc+1
     JMP push_next
 .op_store
-    JSR pop_acc
+    POP_ACC
     FETCH : ASL A : TAY
     BCS store_high
     LDA acc : STA bv,Y : LDA acc+1 : STA bv+1,Y
@@ -105,7 +116,7 @@ ENDMACRO
     LDA acc : STA bv+256,Y : LDA acc+1 : STA bv+257,Y
     JMP vm_next
 .op_storeh
-    JSR pop_acc
+    POP_ACC
     JSR vm_byte : ASL A : TAY
     LDA acc : STA bv+512,Y : LDA acc+1 : STA bv+513,Y
     JMP vm_next
@@ -135,21 +146,41 @@ ENDMACRO
 \ RAM or the logic bank, in the data bank (paged in for it), or the
 \ Spectrum's bitmap (made from the port's screen: PEEK only).
 .op_peek
+    JSR pop_acc : JSR peek_acc
+    JMP push_next
+\ acc = the byte at the original's address acc.
+.peek_acc
 {
-    JSR pop_acc : JSR vm_xlat
+    JSR vm_xlat
     LDA xk : BNE other
     LDY #0 : LDA (eptr),Y
-    JMP push_a_next
+.byte
+    STA acc : LDA #0 : STA acc+1
+    RTS
 .other
     CMP #XK_DATA : BNE bitmap
     JSR page_data
     LDY #0 : LDA (eptr),Y : PHA
     JSR page_logic
-    PLA : JMP push_a_next
+    PLA : JMP byte
 .bitmap
     JSR bitmap_byte
-    JMP push_a_next
+    JMP byte
 }
+\ POKE / DPOKE arg at the original's address acc (native code's).
+.poke_at
+    JSR vm_xlat
+    LDA xk : BNE bad_kind
+    LDY #0 : LDA arg : STA (eptr),Y
+    RTS
+.dpoke_at
+    JSR vm_xlat
+    LDA xk : BNE bad_kind
+    LDY #0 : LDA arg : STA (eptr),Y
+    INY : LDA arg+1 : STA (eptr),Y
+    RTS
+.bad_kind
+    JMP vm_bad_kind
 .op_dpeek
     JSR pop_acc : JSR dpeek_acc
     JMP push_next
@@ -177,11 +208,11 @@ ENDMACRO
     LDY #0 : LDA acc : STA (eptr),Y
     JMP vm_next
 .op_dpoke
-    JSR pop_acc
+    POP_ACC
 .dpoke_next                         ; (the address in acc, the value on top)
     JSR vm_xlat
     LDA xk : BNE vm_bad_kind
-    JSR pop_acc
+    POP_ACC
     LDY #0 : LDA acc : STA (eptr),Y
     INY : LDA acc+1 : STA (eptr),Y
     JMP vm_next
@@ -228,6 +259,28 @@ ENDMACRO
     RTS
 }
 
+\ A statement compiled to native code (tools/bas2native.py): NATIVE calls
+\ its routine; NIF calls an IF's, then takes the jump (the word after) if
+\ it returns C set.
+.op_native
+    JSR vm_word
+    JSR call_native
+    JMP vm_next
+.op_nif
+{
+    JSR vm_word
+    JSR call_native
+    PHP
+    JSR vm_word
+    PLP : BCC no
+    LDA vm_w : STA vpc : LDA vm_w+1 : STA vpc+1
+.no
+    JMP vm_next
+}
+.call_native
+    JMP (vm_w)
+    INCLUDE "../build/vmnative.6502"
+
 \ The superinstructions (tools/bas2vm.py's peephole): LDEL i, base pushes
 \ array base's element by variable i (load, elem, dpeek); STEL stores the
 \ top there (load, elem, dpoke); ADDB n adds a byte constant to the top.
@@ -263,6 +316,18 @@ ENDMACRO
 \ eptr = the port's address for the original's address in acc.
 .vm_xlat
 {
+    \ The variables first, as good as all of it: 41015-41574 to bv.
+    LDA acc+1 : CMP #HI(41015) : BCC search : BNE not_low
+    LDA acc : CMP #LO(41015) : BCC search
+.not_low
+    LDA acc+1 : CMP #HI(41575) : BCC vars : BNE search
+    LDA acc : CMP #LO(41575) : BCS search
+.vars
+    LDA acc : CLC : ADC #LO(bv - 41015) : STA eptr
+    LDA acc+1 : ADC #HI(bv - 41015) : STA eptr+1
+    LDA #XK_DIRECT : STA xk
+    RTS
+.search
     LDX #0
 .region
     LDA acc : CMP xlat_from_lo,X
@@ -293,7 +358,11 @@ ENDMACRO
 \ --- Arithmetic ----------------------------------------------------------------
 \ Two operands: arg = the top (the right), acc = the one under it.
 .two
-    JSR pop_arg : JMP pop_acc
+    LDX vsp
+    LDA vs_lo,X : STA arg : LDA vs_hi,X : STA arg+1
+    LDA vs_lo+1,X : STA acc : LDA vs_hi+1,X : STA acc+1
+    INX : INX : STX vsp
+    RTS
 .op_add
     JSR two
     CLC
@@ -365,11 +434,11 @@ ENDMACRO
 
 \ --- Control -------------------------------------------------------------------
 .op_jz
-    JSR vm_word : JSR pop_acc
+    JSR vm_word : POP_ACC
     LDA acc : ORA acc+1 : BEQ jump
     JMP vm_next
 .op_jnz
-    JSR vm_word : JSR pop_acc
+    JSR vm_word : POP_ACC
     LDA acc : ORA acc+1 : BNE jump
     JMP vm_next
 .op_jmp

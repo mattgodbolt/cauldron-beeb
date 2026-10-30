@@ -69,8 +69,16 @@ $(TEST): $(SOURCES) $(GENERATED) | build
 	$(ASM) -D VMBRK=1 -D 'BUILD="$(BUILD) test"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) src/main.6502
 
 # The original's BASIC, compiled for the interpreter (decision 10).
-build/logic.6502: build/cauldron.z80 tools/bas2vm.py tools/decompile.py tools/decompile_names.py
-	$(PYTHON) tools/bas2vm.py
+# The statements a pass runs most (tools/zxhot.py) are compiled to native
+# code: NATIVE of them.
+NATIVE ?= 80
+build/native.cfg: FORCE | build
+	@echo '$(NATIVE)' | cmp -s - $@ || echo '$(NATIVE)' > $@
+build/logic.6502: build/native.cfg build/cauldron.z80 build/hot.json tools/bas2vm.py tools/bas2native.py tools/decompile.py tools/decompile_names.py
+	$(PYTHON) tools/bas2vm.py --hot build/hot.json --native $(NATIVE)
+
+build/hot.json: build/cauldron.z80 tools/zxhot.py tests/scenarios.txt
+	$(PYTHON) tools/zxhot.py
 
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
@@ -84,7 +92,7 @@ passes: $(TEST) build/cauldron.z80
 	node tools/beepass.mjs
 	$(PYTHON) tools/passcmp.py
 
-vm: build/cauldron.z80
+vm: build/cauldron.z80 build/logic.6502
 	$(PYTHON) tools/vmcheck.py
 
 # SPRITE against the original's on random cases (tools/spritecases.py:
@@ -160,3 +168,5 @@ venv:
 
 clean:
 	rm -rf build
+
+FORCE:

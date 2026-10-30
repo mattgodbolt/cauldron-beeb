@@ -323,3 +323,17 @@ variable index (load and store) and adding a byte constant, the sprite
 blocks' addresses folded, dispatch through a page-aligned table, and
 sprite rows shifted at most 4 times: a pass in flight about 348K
 cycles, from 480K (5 frames: 200K).
+
+### Native code for the hottest statements
+
+`tools/zxhot.py` counts each statement's runs a pass on the original:
+about a thousand runs a pass, the 200 most run statements 82% of them.
+`tools/bas2native.py` compiles a statement of stores or an IF to a
+native routine in the logic bank, words throughout (no typing from
+ranges: what the bytecode does, faster), through the interpreter's own
+memory and arithmetic routines; the bytecode calls it (NATIVE, NIF).
+`make vm` checks them against the Z80 like the rest. 80 fit the logic
+bank (`NATIVE` in the Makefile); a pass in flight from 332K cycles to
+304K. `tools/vmcheck.py` used to run the compiler itself without the
+native options, so it checked bytecode the disc didn't have: it uses
+the Makefile's now.

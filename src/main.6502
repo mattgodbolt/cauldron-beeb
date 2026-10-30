@@ -92,7 +92,9 @@ ENDSECTION
 \ (tools/mkdata.py's logictab.bin, vmxlat.6502), for a sideways RAM bank
 \ of its own: paged in while the interpreter runs.
 SECTION Logic, org = &8000, load = &FFFF0000 OR DATA_LOAD, exec = &FFFF0000 OR DATA_LOAD, filename = "CAULLOG", guard = &C000
+IF NOT(DEFINED(VIEWER))             ; (the viewer has no interpreter)
     INCLUDE "../build/logic.6502"
+ENDIF
 .logictab   INCBIN "../build/data/logictab.bin"
 .logic_end
     PRINT "sideways logic &8000-&", ~logic_end

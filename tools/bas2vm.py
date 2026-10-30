@@ -45,6 +45,7 @@ OPS = [
     ("pause", 0), ("halt", 0), ("wait", 2), ("beeper", 0), ("beep", 0),
     ("pass", 1), ("nextall", 2),
     ("addb", 1), ("ldel", 3), ("stel", 3),
+    ("native", 2), ("nif", 4),
 ]
 # The tops of the main loops: a pass starts there (decision 6's pace, and
 # where the tests compare a pass), with its length in frames.
@@ -132,8 +133,10 @@ class Compiler:
                 self.out.append(f"    EQUB OP_{name.upper()}, {args[0]}")
             elif n == 2:
                 self.out.append(f"    EQUB OP_{name.upper()} : EQUW {args[0]}")
-            else:
+            elif n == 3:
                 self.out.append(f"    EQUB OP_{name.upper()}, {args[0]} : EQUW {args[1]}")
+            else:
+                self.out.append(f"    EQUB OP_{name.upper()} : EQUW {args[0]}, {args[1]}")
         self.code = []
 
     # --------------------------------------------------------------- expressions
@@ -308,6 +311,12 @@ class Compiler:
     def statement(self, s):
         if s.addr in PASS_FRAMES:
             self.op("pass", str(PASS_FRAMES[s.addr]))
+        if s.addr in self.native_kind:
+            if self.native_kind[s.addr] == "store":
+                self.op("native", f"N{s.addr}")
+            else:
+                self.op("nif", f"N{s.addr}", f"L{s.events[0][3]}")
+            return
         if s.kind == "next":
             i = (s.var - FOR_VARS) // 2
             if not 0 <= i < 256 or (s.var - FOR_VARS) % 2:
@@ -326,8 +335,29 @@ class Compiler:
                 if self.depth:
                     raise Unsupported("values left on the stack")
 
-    def compile(self):
+    def compile(self, hot=None, native_max=0):
+        """hot: {statement: runs a pass} (tools/zxhot.py): the native_max
+        most run that tools/bas2native.py can compile become native."""
         bad = []
+        self.native_kind = {}
+        self.native_out = []
+        if hot and native_max:
+            from bas2native import Native, Unsupported as NativeUnsupported
+            by_addr = {s.addr: s for s in self.dec.stmts}
+            for a in sorted(hot, key=lambda a: -hot[a]):
+                if len(self.native_kind) >= native_max:
+                    break
+                st = by_addr.get(a)
+                if st is None or a in PASS_FRAMES:
+                    continue
+                nat = Native()
+                nat.n = len(self.native_out) * 1000         # (labels unique across routines)
+                try:
+                    kind = nat.statement(st)
+                except NativeUnsupported:
+                    continue
+                self.native_kind[a] = kind
+                self.native_out += [f".N{a}"] + nat.out
         # NEXTs a FOR loops straight back to: statements setting a FOR
         # slot's loop-back address to the address after them, a NEXT.
         self.empty_loops = set()
@@ -379,21 +409,35 @@ def main():
     ap.add_argument("--out", default="build/logic.6502")
     ap.add_argument("--ops", default="build/vmops.6502")
     ap.add_argument("--table", default="build/vmtable.6502")
+    ap.add_argument("--hot", help="tools/zxhot.py's counts: the most run statements compiled natively")
+    ap.add_argument("--native", type=int, default=0, metavar="N", help="how many of them")
     args = ap.parse_args()
     c = Compiler(D.load_memory(args.snap))
-    bad = c.compile()
+    hot = None
+    if args.hot and os.path.exists(args.hot):
+        import json
+        hot = {int(k): v for k, v in json.load(open(args.hot)).items()}
+    bad = c.compile(hot, args.native)
     if c.max_depth > STACK_MAX:
         bad.append((0, f"the stack reaches {c.max_depth}"))
     with open(args.out, "w") as f:
         f.write("\\ Made by tools/bas2vm.py from the original's BASIC: don't edit.\n")
         f.write("\n".join(c.out) + "\n")
+        f.write("\\ The statements compiled to native code (tools/bas2native.py).\n")
+        f.write(".native_start\n")
+        f.write("\n".join(c.native_out) + "\n")
+        f.write(".native_end\n")
     write_ops(args.ops)
     write_table(args.table)
     with open(os.path.join(os.path.dirname(args.table), "vmjump.6502"), "w") as f:
         f.write("\\ Made by tools/bas2vm.py: where vm.6502's RTS dispatch may land.\n")
         f.write("    ZA_CANJUMP " + ", ".join(f"op_{name}" for name, _ in OPS + [("bad", 0)]) + "\n")
+    with open(os.path.join(os.path.dirname(args.table), "vmnative.6502"), "w") as f:
+        f.write("\\ Made by tools/bas2vm.py: the native statements call_native may reach.\n")
+        if c.native_kind:
+            f.write("    ZA_CANJUMP " + ", ".join(f"N{a}" for a in c.native_kind) + "\n")
     print(f"{args.out}: {c.size} bytes of bytecode; the stack reaches {c.max_depth}; "
-          f"{len(bad)} statements unsupported")
+          f"{len(c.native_kind)} statements native; {len(bad)} statements unsupported")
     for a, why in bad[:30]:
         print(f"  {a}: {why}")
     return 1 if bad else 0
