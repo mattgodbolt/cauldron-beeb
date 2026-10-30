@@ -71,7 +71,7 @@ $(TEST): $(SOURCES) $(GENERATED) | build
 # The original's BASIC, compiled for the interpreter (decision 10).
 # The statements a pass runs most (tools/zxhot.py) are compiled to native
 # code: NATIVE of them.
-NATIVE ?= 130
+NATIVE ?= 120
 build/native.cfg: FORCE | build
 	@echo '$(NATIVE)' | cmp -s - $@ || echo '$(NATIVE)' > $@
 build/logic.6502: build/native.cfg build/cauldron.z80 build/hot.json tools/bas2vm.py tools/bas2native.py tools/decompile.py tools/decompile_names.py

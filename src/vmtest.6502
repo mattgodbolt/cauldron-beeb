@@ -1,5 +1,6 @@
 \ The interpreter alone, with the bytecode and its places, for
 \ tools/vmcheck.py (on py65: none of the rest of the game).
+NOCHAIN = 1                         ; (native code exits after each statement: checked one at a time)
 INCLUDE "../build/vmops.6502"
 INCLUDE "vmzp.6502"
 attr_p = &71 : attr_t = &72 : rnd_seed = &73 : frames = &75 : prbuf = &77 : chars = &79 : stick_res = &7B

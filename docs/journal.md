@@ -393,3 +393,17 @@ charges code in the sideways window to the last label below it
 A pass in flight: 264K, 248K, 221K, 210K cycles median after each (5
 frames is 200K), the fastest passes under it. `make check` passes. Main
 RAM's workspace is nearly full now (the tables).
+
+### Native statements chained
+
+A native statement's bytecode is now one `OP_NGO` into its code, and the
+code goes on by itself: `JMP G<addr>` to the next statement (or an IF's
+target), `G` being that statement's native code when it has some, else a
+shared exit (`native_exit`) back to its bytecode. No call and return a
+statement, and 92 of the 169 places native code goes on to are native
+themselves. `src/vmtest.6502` defines `NOCHAIN` so every statement exits
+to the next one's label and `make vm` still checks them one at a time;
+`BREAK_AT` keeps the harness's breakpoint statements bytecode. 120 fit
+the logic bank. A pass in flight: median 199,680 cycles, the pace itself
+(decision 6's 5 frames): most passes now wait for it. The slowest are
+still about 279K.

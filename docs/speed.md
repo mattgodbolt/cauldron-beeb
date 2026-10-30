@@ -45,7 +45,8 @@ estimates from cycle counts and models, to be measured as each lands.
 ## The logic
 
 1. Constant address chains folded. Done (`simp`).
-2. Native regions: hot statements compiled as one flow (fall-through
+2. Native regions (chaining done: OP_NGO, G<addr>; the better code and
+   the selection to come): hot statements compiled as one flow (fall-through
    between native statements, GOSUB as JSR, NEXT native when the slot
    holds the expected loop-back), better code (folded places, inline
    signed compares, `INC v : BNE`), guarded byte-index array elements,

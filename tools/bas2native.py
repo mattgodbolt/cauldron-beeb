@@ -2,10 +2,11 @@
 """Native 6502 for the statements a pass runs most (decision 10): the
 interpreter's time where it's spent.
 
-Used by tools/bas2vm.py (--hot): a statement of stores (LET, POKE)
-becomes a routine N<addr> its bytecode calls (OP_NATIVE), an IF one
-NI<addr> that returns with C set when the bytecode should take its jump
-(OP_NIF). Every value is a word in acc (arg for a second operand, the
+Used by tools/bas2vm.py (--hot): a statement of stores (LET, POKE) or a
+single IF becomes native code at N<addr>, which its bytecode jumps to
+(OP_NGO) and which goes on with JMP G<addr> to the statement after it (or
+the IF's target): bas2vm.py makes G<addr> the next statement's native
+code when it has some, else an exit back to its bytecode. Every value is a word in acc (arg for a second operand, the
 6502's stack for more), with the original's semantics through the
 interpreter's own routines: rt_mul, rt_div, rt_cmp, rt_rnd, and memory
 by the original's addresses (dpeek_acc, peek_acc, dpoke_at, poke_at) where
@@ -174,6 +175,10 @@ class Native:
 
     # ------------------------------------------------------------ statements
 
+    def goto(self, addr):
+        self.gotos.append(addr)
+        self.emit(f"JMP G{addr}")
+
     def store(self, dst, val, word):
         d = simp(dst)
         if D.const(d):
@@ -194,8 +199,10 @@ class Native:
         self.two(d, val)
         self.emit("JSR dpoke_at" if word else "JSR poke_at")
 
-    def statement(self, s):
-        """The routine for statement s (its lines), or Unsupported."""
+    def statement(self, s, succ):
+        """The code for statement s (its lines), going on to statement
+        succ, or Unsupported. self.gotos: the statements it goes on to."""
+        self.gotos = []
         evs = s.events
         if s.kind != "ev" or not evs:
             raise Unsupported("not a plain statement")
@@ -208,17 +215,17 @@ class Native:
                 if ev[0] == "poke" and v[0] == "lo":
                     v = v[1]
                 self.store(ev[1], v, ev[0] == "let")
-            self.emit("RTS")
+            self.goto(succ)
             return "store"
         if len(evs) == 1 and evs[0][0] == "if":
             ev = evs[0]
             self.expr(ev[2])
-            # C set: the bytecode's jump is taken (Z: when the value is 0).
+            # The jump is taken when the value is 0 (Z), or isn't (NZ).
             t = self.label()
             self.emit("LDA acc : ORA acc+1")
             self.emit(f"{'BEQ' if ev[1] == 'Z' else 'BNE'} {t}")
-            self.emit("CLC : RTS")
+            self.goto(succ)
             self.out.append(f".{t}")
-            self.emit("SEC : RTS")
+            self.goto(ev[3])
             return "if"
         raise Unsupported("not stores or an IF")

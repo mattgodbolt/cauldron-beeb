@@ -259,27 +259,18 @@ ENDMACRO
     RTS
 }
 
-\ A statement compiled to native code (tools/bas2native.py): NATIVE calls
-\ its routine; NIF calls an IF's, then takes the jump (the word after) if
-\ it returns C set.
-.op_native
-    JSR vm_word
-    JSR call_native
-    JMP vm_next
-.op_nif
-{
-    JSR vm_word
-    JSR call_native
-    PHP
-    JSR vm_word
-    PLP : BCC no
-    LDA vm_w : STA vpc : LDA vm_w+1 : STA vpc+1
-.no
-    JMP vm_next
-}
-.call_native
+\ A statement compiled to native code (tools/bas2native.py): NGO jumps to
+\ it, and it goes on by itself (to more native code, or back here with
+\ vpc set: no return).
+.op_ngo
+    LDY #0 : LDA (vpc),Y : STA vm_w
+    INY : LDA (vpc),Y : STA vm_w+1
     JMP (vm_w)
     INCLUDE "../build/vmnative.6502"
+\ Native code's way back to the bytecode: at A (low), X (high).
+.native_exit
+    STA vpc : STX vpc+1
+    JMP vm_next
 
 \ The superinstructions (tools/bas2vm.py's peephole): LDEL i, base pushes
 \ array base's element by variable i (load, elem, dpeek); STEL stores the

@@ -45,7 +45,7 @@ OPS = [
     ("pause", 0), ("halt", 0), ("wait", 2), ("beeper", 0), ("beep", 0),
     ("pass", 1), ("nextall", 2),
     ("addb", 1), ("ldel", 3), ("stel", 3),
-    ("native", 2), ("nif", 4),
+    ("ngo", 2),
 ]
 # The tops of the main loops: a pass starts there (decision 6's pace, and
 # where the tests compare a pass), with its length in frames.
@@ -63,6 +63,11 @@ SYSVARS = {
 
 class Unsupported(Exception):
     pass
+
+
+# Statements tools/beepass.mjs breaks at (vm_brk: their bytecode's label
+# when vpc reaches it), which native code must not jump past.
+BREAK_AT = {25606, 26691}
 
 
 def addr_parts(e):
@@ -343,10 +348,7 @@ class Compiler:
         if s.addr in PASS_FRAMES:
             self.op("pass", str(PASS_FRAMES[s.addr]))
         if s.addr in self.native_kind:
-            if self.native_kind[s.addr] == "store":
-                self.op("native", f"N{s.addr}")
-            else:
-                self.op("nif", f"N{s.addr}", f"L{s.events[0][3]}")
+            self.op("ngo", f"N{s.addr}")    # (the rest is the native code's)
             return
         if s.kind == "next":
             i = (s.var - FOR_VARS) // 2
@@ -372,23 +374,35 @@ class Compiler:
         bad = []
         self.native_kind = {}
         self.native_out = []
+        gotos = set()
         if hot and native_max:
             from bas2native import Native, Unsupported as NativeUnsupported
             by_addr = {s.addr: s for s in self.dec.stmts}
+            succ = {a.addr: b.addr for a, b in zip(self.dec.stmts, self.dec.stmts[1:])}
             for a in sorted(hot, key=lambda a: -hot[a]):
                 if len(self.native_kind) >= native_max:
                     break
                 st = by_addr.get(a)
-                if st is None or a in PASS_FRAMES:
+                if st is None or a in PASS_FRAMES or a in BREAK_AT or a not in succ:
                     continue
                 nat = Native()
                 nat.n = len(self.native_out) * 1000         # (labels unique across routines)
                 try:
-                    kind = nat.statement(st)
+                    kind = nat.statement(st, succ[a])
                 except NativeUnsupported:
                     continue
                 self.native_kind[a] = kind
                 self.native_out += [f".N{a}"] + nat.out
+                gotos |= set(nat.gotos)
+        # Where native code goes on to: the statement's own native code
+        # (unless NOCHAIN: the checks run a statement at a time), else an
+        # exit to its bytecode.
+        for a in sorted(gotos):
+            exit = [f".G{a}", f"    LDA #LO(L{a}) : LDX #HI(L{a}) : JMP native_exit"]
+            if a in self.native_kind:
+                self.native_out += ["IF DEFINED(NOCHAIN)"] + exit + ["ELSE", f"G{a} = N{a}", "ENDIF"]
+            else:
+                self.native_out += exit
         # NEXTs a FOR loops straight back to: statements setting a FOR
         # slot's loop-back address to the address after them, a NEXT.
         self.empty_loops = set()
@@ -464,7 +478,7 @@ def main():
         f.write("\\ Made by tools/bas2vm.py: where vm.6502's RTS dispatch may land.\n")
         f.write("    ZA_CANJUMP " + ", ".join(f"op_{name}" for name, _ in OPS + [("bad", 0)]) + "\n")
     with open(os.path.join(os.path.dirname(args.table), "vmnative.6502"), "w") as f:
-        f.write("\\ Made by tools/bas2vm.py: the native statements call_native may reach.\n")
+        f.write("\\ Made by tools/bas2vm.py: the native statements OP_NGO may reach.\n")
         if c.native_kind:
             f.write("    ZA_CANJUMP " + ", ".join(f"N{a}" for a in c.native_kind) + "\n")
     print(f"{args.out}: {c.size} bytes of bytecode; the stack reaches {c.max_depth}; "
