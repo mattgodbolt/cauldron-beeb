@@ -51,6 +51,7 @@ Master 128, from one disc.
 make fetch      # download the original into original/ (not committed)
 make zx         # load the tape into build/cauldron.z80, at the game's entry
 make disasm     # build/cauldron.skool from disasm/*.ctl
+make bas        # build/cauldron.bas: the compiled BASIC, decompiled (tools/decompile.py)
 make venv       # .venv with SkoolKit and Pillow (needs uv)
 ```
 

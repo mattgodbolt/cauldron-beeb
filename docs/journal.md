@@ -85,3 +85,26 @@ original's own routines run headless: they match. `tools/zxprobe.py`
 makes the scenes (it reaches the underground by giving the witch a door
 and its key at the door test) and measures pacing, profile, routine
 costs and colour.
+
+### Decompiling the compiled BASIC
+
+The game logic (25592-41014) is the output of a simple BASIC compiler:
+every expression is built in HL with a library at 24880-25591, so
+`tools/decompile.py` executes it symbolically rather than pattern-matching,
+and `make bas` writes the whole program back as BASIC
+(`build/cauldron.bas`). It matches all of the compiled code; anything it
+couldn't follow would print as raw Z80. Each statement that stores or
+branches is also run on the Z80 from random variables and checked against
+its decompiled expression. That caught the first model of the library's
+multiply: the library's isn't the true product when a partial sum
+overflows (the carry leaks into the multiplicand), and RND depends on it.
+The model now copies it bit for bit.
+
+Two finds worth keeping: the FOR slots at 24603 are one per letter, so the
+FOR variables keep their source names (x is the hag's x); and a constant
+array index is folded into an address, so array elements also appear as
+scalars. `docs/research/compiler.md` has the compiler and the RND algorithm
+the port must copy; `docs/research/logic-outline.md` maps the program.
+Execution maps for the listing's "never ran" marks were made by driving
+the original with pokes (teleporting to doors with all keys held); they
+live in `build/maps/`.

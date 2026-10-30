@@ -138,7 +138,7 @@ D 25592 The game's logic, compiled. See docs/research/compiler.md and the decomp
 
 b 41015 The compiled program's variables
 @ 41015 label=VARS
-D 41015 Integer variables and arrays, a word each (to 41570); their names and meanings are in the decompiler's research. Zero on the tape: start-up sets them.
+D 41015 Integer variables and arrays, a word each (to 41574); their names and meanings are in the decompiler's research. Zero on the tape: start-up sets them.
 B 41015,556,16
 s 41571 Unused
 b 41575 String literals for PRINT

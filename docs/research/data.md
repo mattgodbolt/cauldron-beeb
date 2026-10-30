@@ -23,8 +23,7 @@ as SkoolKit blocks, and `tools/zxgfx.py` draws the graphics.
 | 24759 | 24822 | Eight sprite parameter blocks, 8 bytes each | SPRITE |
 | 24823 | 25591 | The runtime library | compiled code |
 | 25592 | 41014 | The compiled BASIC (ends `JP 25592` at 41012) | |
-| 41015 | 41570 | The compiled program's variables, a word each | compiled code |
-| 41571 | 41574 | Unused (zero) | |
+| 41015 | 41574 | The compiled program's variables, a word each | compiled code |
 | 41575 | 41589 | String literals for PRINT (key glyphs `ty{\|`, the magic's `O`, blanks, `0000`) | compiled PRINT |
 | 41590 | 41731 | Small tables (pairs of bytes) | compiled PEEK |
 | 41732 | 42139 | Unused (zero) | |
@@ -189,7 +188,7 @@ panel font, whose O glyph is a zero:
 
 ### The variables
 
-41015-41570 are the compiled program's integer variables and arrays, a
+41015-41574 are the compiled program's integer variables and arrays, a
 word each, all zero on the tape and set by the program's start. Their
 names and meanings are the decompiler's (tools/decompile_names.py);
 the POK file's addresses fall in this block (lives 41315, magic 41313,
