@@ -179,6 +179,9 @@
 \ began the byte's frames ago (at once if it's later than that).
 .op_pass
 {
+IF DEFINED(VMBRK)
+    JSR vm_pass_due                 ; (tools/passtime.mjs': the pass's work done)
+ENDIF
     JSR vm_byte : STA pass_len
 .wait
     LDA vsyncs : SEC : SBC pass_vsync
@@ -194,6 +197,8 @@ ENDIF
 }
 IF DEFINED(VMBRK)
 .vm_pass                            ; (global)
+    RTS
+.vm_pass_due                        ; (global: its own address)
     RTS
 ENDIF
 

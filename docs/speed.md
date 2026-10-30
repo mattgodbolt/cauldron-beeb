@@ -61,3 +61,21 @@ estimates from cycle counts and models, to be measured as each lands.
    now, little after 2.
 - The 16K-sideways-RAM target isn't reachable from the logic alone: its
   floor plus the data bank is well over 16K.
+
+## Against the original (2026-10-30)
+
+`tools/passtime.mjs` reports each pass's work as well (to `op_pass`,
+before the wait for the pace; `PASSTIME_ALL=1` lists them). The
+original's passes, measured the same way on the Z80 (keys held from the
+third pass; frames at 69888 T-states):
+
+| Run | The original | The port's work |
+|---|---|---|
+| standing | median 5.25 frames, max 7.3 | median 141K cycles (2.8 frames), max 300K |
+| flying right | median 6.1, max 8.0 | median 186K (3.7), max 369K (7.4) |
+| flying and firing | median 7.8 (`runtime.md`) | median 210K (4.2), max 369K |
+
+So at decision 6's 5 frames the port is as fast as the original standing
+and faster in flight; the passes that overrun it are the original's
+slow passes too (more monsters, the spikes every few passes), and still
+quicker than the original's.

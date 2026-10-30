@@ -407,3 +407,14 @@ to the next one's label and `make vm` still checks them one at a time;
 the logic bank. A pass in flight: median 199,680 cycles, the pace itself
 (decision 6's 5 frames): most passes now wait for it. The slowest are
 still about 279K.
+
+### RND's remainder; the port against the original
+
+`rt_rnd` takes `|seed| MOD |n|` for n a power of two below 256 (RND 2,
+RND 8) from the seed's low bits: the restoring divide's remainder
+exactly, without it. Small in the end: the heavy passes weren't RND's.
+`tools/passtime.mjs` now separates a pass's work from its wait for the
+pace (`vm_pass_due`, the test disc's), and the original's passes were
+timed the same way: docs/speed.md has the table. The port's work is
+under the original's pass in every run measured, standing, flying and
+firing; decision 6's fixed 5 frames is what holds it back in flight.

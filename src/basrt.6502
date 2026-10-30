@@ -170,6 +170,16 @@ FOR_VARS = 41277 - 41015                ; (FOR_VARS in tools/bas2vm.py)
     DEC acc
     LDA acc : STA rnd_seed : LDA acc+1 : STA rnd_seed+1
     PLA : STA arg+1 : PLA : STA arg
+    \ n a power of two below 256 (RND 2, RND 8): the divide's remainder
+    \ is |seed|'s low bits.
+    LDA arg+1 : BNE divide
+    LDX arg : BEQ divide
+    DEX : TXA : AND arg : BNE divide
+    JSR rt_abs                          ; (rt_neg keeps X)
+    TXA : AND acc : STA acc
+    LDA #0 : STA acc+1
+    RTS
+.divide
     JSR rt_div
     LDA arg : STA acc : LDA arg+1 : STA acc+1
     RTS
