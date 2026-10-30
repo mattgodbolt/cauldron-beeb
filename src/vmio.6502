@@ -65,7 +65,9 @@
 \ under BORDCR's, the print position home.
 .op_cls
     JSR page_data
+    LDA menu_mode : BNE menu_rows
     SEC : JSR set_row_maps          ; (the bands: the sky's until the room's say not)
+.menu_rows
     LDA attr_p : JSR cls_attr
     JSR page_logic
     JMP vm_next
@@ -286,8 +288,7 @@ USR_N = LEN(USR_AT)
 
 \ 52852: the moon's 5 x 6 attributes (the original's 52820) at row 7,
 \ column 6.
-MOON_ATTRS = logictab + LT_AT[5]
-    ASSERT LT_FROM[5] = 52820
+MOON_ATTRS = logictab + LT_AT[FIND(LT_FROM, 52820)]
 .usr_moon
 {
     JSR page_logic                  ; (the table is the logic bank's)
@@ -339,6 +340,7 @@ MOON_ATTRS = logictab + LT_AT[5]
     LDA #LO(50388) : LDX #HI(50388) : LDY #162 : JSR text
     JMP chars_rom
 .usr_menu
+    JSR menu_colours
     LDA #LO(50550) : LDX #HI(50550) : LDY #212 : JSR text
     JMP chars_rom
 .usr_end

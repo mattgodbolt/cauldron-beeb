@@ -267,3 +267,18 @@ scrolls.
 `tests/scenarios.txt` can now set variables on both machines as a pass
 begins (`=ADDR:VALUE`, or `@ADDR` for each machine's own word there),
 to set scenes up: the doors, as the decompiler's exploration did.
+
+### Underground, and the front end's colours
+
+Two door scenarios (all the keys, the witch set at a door, walking in)
+take the port underground: every pass agrees with the original's. On
+the way: BASIC's AND evaluates both sides, so 38012 reads `ingr(i)` for
+an i below the array, into the compiled code's last bytes, which are
+now among the logic bank's tables (as nm's monster scan read past its
+map).
+
+Matt saw the menu's fourth option vanish (the lower band's colour map,
+never set before a landscape or room): the front end has its own layout
+now, the original menu's four colours exactly. And the doors' graphics,
+moving scenery, take their cell's colour as the original's do
+(decision 5's exception); the sprite check models it.

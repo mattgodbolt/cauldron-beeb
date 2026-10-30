@@ -25,6 +25,10 @@
 \ ***************************************************************************
 
 SPR_MAX_W = 4                   ; the widest graphic (the door's 4 bytes)
+\ The doors' frames, by the original's address: door_gfx32's (52300, 4
+\ frames of 32 x 4 bytes) and door_gfx24's (53532, 4 of 24 x 2).
+DOOR_FROM = {52300, 53532}
+DOOR_TO   = {52300 + 4 * 128, 53532 + 4 * 48}
 
 ZA_AUTO2 spr_gfx                ; the graphic's next row
 ZA_AUTO1 spr_line               ; the screen line of the next row (175 - y)
@@ -33,6 +37,7 @@ ZA_AUTO1 spr_w
 ZA_AUTO1 spr_mode
 ZA_AUTO1 spr_attr
 ZA_AUTO1 spr_ink                ; the sprite's own colour, a Spectrum ink
+ZA_AUTO1 spr_door               ; a door: its own colour is its cell's
 ZA_AUTO1 spr_shift              ; x MOD 8
 ZA_AUTO1 spr_col                ; x DIV 8
 ZA_AUTO1 spr_cells              ; cells a row covers: w, or w + 1 shifted
@@ -54,6 +59,17 @@ ZA_AUTO1 dst_acol
     LDA sprite_blocks+5,X : STA spr_w
     LDA sprite_blocks+6,X : STA spr_mode
     LDA sprite_blocks+7,X : STA spr_attr
+    \ The doors' graphics are scenery (decision 5): their pixels take the
+    \ colour the original shows them in, their cell's ink.
+    LDX #0 : STX spr_door
+.door
+    LDA spr_gfx : CMP door_from_lo,X
+    LDA spr_gfx+1 : SBC door_from_hi,X : BCC next_door   ; below its start
+    LDA spr_gfx : CMP door_to_lo,X
+    LDA spr_gfx+1 : SBC door_to_hi,X : BCS next_door     ; at or past its end
+    INC spr_door
+.next_door
+    INX : CPX #2 : BNE door
     JSR sprite_gfx
     PLA : PHA : AND #7 : STA spr_shift
     CMP #1                          ; (C set if shifted: one more cell)
@@ -110,6 +126,10 @@ SPR_TO   = {42498, 45318, 55560, 60340}
 \ another.
 SPR_LEN = {SPR_TO[0] - SPR_FROM[0], SPR_TO[1] - SPR_FROM[1], SPR_TO[2] - SPR_FROM[2], SPR_TO[3] - SPR_FROM[3]}
 SPR_START = {sprites, sprites + SPR_LEN[0], sprites + SPR_LEN[0] + SPR_LEN[1], sprites + SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2]}
+.door_from_lo   EQUB LO(DOOR_FROM[0]), LO(DOOR_FROM[1])
+.door_from_hi   EQUB HI(DOOR_FROM[0]), HI(DOOR_FROM[1])
+.door_to_lo     EQUB LO(DOOR_TO[0]), LO(DOOR_TO[1])
+.door_to_hi     EQUB HI(DOOR_TO[0]), HI(DOOR_TO[1])
 .region_from_lo
 FOR n = 0..SPR_REGIONS-1 : EQUB LO(SPR_FROM[n]) : NEXT
 .region_from_hi
@@ -225,7 +245,13 @@ FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
     LDA dst_line : LSR A : LSR A : LSR A : PHA
     LDX spr_ink : JSR ink_for
     LDA ink_mask : STA own
-    PLA : LDX dst_col : JSR cell_at
+    PLA : PHA : LDX dst_col : JSR cell_at
+    PLA
+    LDX spr_door : BEQ not_door
+    LDY #0 : PHA : LDA (attr_ptr),Y : AND #7 : TAX : PLA
+    JSR ink_for                     ; (the door's: its cell's ink)
+    LDA ink_mask : STA own
+.not_door
     JSR cell_info
     STA home
     LDA dst_line : AND #7 : TAY

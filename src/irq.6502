@@ -157,6 +157,56 @@ NEXT
     RTS
 }
 
+\ The front end's colours (the menu, from 50369's text): the original's
+\ menu shows green (the frame and the credits), magenta (CAULDRON, row 3),
+\ yellow (CONTROLS) and cyan (the options, from row 11): logical 1 green,
+\ 2 magenta, 3 yellow, and logical 2 cyan from row 4. Every row one map
+\ (menu_cmap). The game's come back with its scenery (scenery_open).
+MENU_PHYS = {PHYS_BLACK, PHYS_GREEN, PHYS_MAGENTA, PHYS_YELLOW}
+.menu_colours
+{
+    LDX #15
+.frame
+    LDA menu_ula,X : STA frame_ula,X
+    DEX : BPL frame
+    LDX #SPLITS - 1
+.split
+    LDY #2 : LDA #PHYS_MAGENTA
+    CPX #4 : BCC same
+    LDA #PHYS_CYAN                  ; (row 4 on)
+.same
+    JSR set_split
+    DEX : BPL split
+    LDX #7
+.map
+    LDA menu_cmap,X : STA cmaps + CMAP_LOWER,X
+    DEX : BPL map
+    LDX #23 : LDA #CMAP_LOWER
+.rows
+    STA row_map,X
+    DEX : BPL rows
+    LDA #&FF : STA land_shown
+    LDA #1 : STA splits_on : STA menu_mode
+    RTS
+}
+.menu_ula
+FOR i = 0..15
+    EQUB ula_value(i, MENU_PHYS[(i AND 8) DIV 4 + (i AND 2) DIV 2])
+NEXT
+\ Spectrum inks 0-7 (black, blue, red, magenta, green, cyan, yellow,
+\ white): green 1, magenta and cyan 2, yellow 3; the rest the nearest.
+.menu_cmap
+    EQUB 0, 2, 2, 2, 1, 2, 3, 3
+
+\ Back to the game's colours if the front end's show.
+.game_colours
+    LDA menu_mode : BEQ no_menu
+    LDA #0 : STA menu_mode
+    SEC : JSR set_row_maps
+    JMP init_splits
+.no_menu
+    RTS
+
 \ Without splits (the title): logical colours 0-3 show the physical
 \ colours at palette_phys, all sixteen entries in frame_ula.
 .set_palette

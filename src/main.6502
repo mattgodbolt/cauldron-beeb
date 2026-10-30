@@ -211,6 +211,7 @@ ELSE
     STA rnd_seed : STA rnd_seed+1 : STA frames : STA frames+1
     JSR chars_rom
     LDA #&FF : STA land_shown       ; (no landscape shown yet)
+    LDA #0 : STA menu_mode
     \ The variables and the FOR slots: zero, as the tape has them.
     LDX #0 : TXA
 .zero
@@ -316,6 +317,7 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .num_lead       SKIP 1          ; PRINT n's
 .num_x          SKIP 1
 .land_shown     SKIP 1          ; the landscape screen whose colours show (scroll.6502)
+.menu_mode      SKIP 1          ; the front end's colours show (irq.6502)
 .pass_len       SKIP 1          ; op_pass's: frames a pass
 .pass_vsync     SKIP 1          ; ... and when the last began
 .vm_brk         SKIP 2          ; (the VMBRK build's statement breakpoint)

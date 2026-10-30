@@ -54,8 +54,11 @@ UNDER_GLYPHS = 59330
 # records; the rooms' entry places and exits; the data among the
 # landscape's machine code (the start's room list at 56920). With them,
 # what the USR routines the port transcribes read: the ending's, the game
-# over's and the menu's texts, and the moon's attributes.
-LOGIC_REGIONS = [(41575, 41732), (42169, 42274), (42274, 43589), (45320, 45704), (50388, 50762),
+# over's and the menu's texts, and the moon's attributes. And the compiled
+# code's last bytes: BASIC's AND evaluates both sides, so ingr(i) is read
+# for an i out of range too (38012: i from m_type - 14), below the array
+# into the code; its value is ANDed away, but the read finds those bytes.
+LOGIC_REGIONS = [(40960, 41015), (41575, 41732), (42169, 42274), (42274, 43589), (45320, 45704), (50388, 50762),
                  (52820, 52850), (56900, 57310)]
 # The sprite graphics (docs/research/data.md), as (first, last + 1): the
 # shots; the skeleton and its set; the witch on foot to the pumpkins

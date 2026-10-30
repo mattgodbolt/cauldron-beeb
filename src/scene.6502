@@ -19,6 +19,9 @@ UNDER_ATTR = 5                  ; underground: cyan on black (35546-35571)
 \ The scenery's PRINTs start as 55565's do: CHAN-OPEN 2 (TEMPS), the
 \ panel font.
 .scenery_open
+IF NOT(DEFINED(VIEWER))
+    JSR game_colours
+ENDIF
     JSR print_temps
     JMP chars_panel
 

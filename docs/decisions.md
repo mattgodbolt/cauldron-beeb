@@ -102,6 +102,15 @@ clean from 88 to 116 on the B and the Master, parked at 102 in the middle.
 
 Still open (D6 in `docs/brief.md`): the enemies' own colours underground
 (white, red, green) in rooms that already have two inks besides cyan.
+And the panel's keys: row 1 would need four inks (yellow, cyan, the
+hags' green and the purple key), so the purple key shows in the nearest,
+cyan.
+
+The front end has a layout of its own (2026-10-30, Matt saw the menu's
+fourth option vanish in the game screen's bands): logical 1 green, 2
+magenta, 3 yellow, logical 2 cyan from row 4, one map for every row,
+the original menu's colours exactly (`menu_colours`, from 50369's
+text; the game's come back with its scenery).
 
 ## 5. No colour clash (Matt, 2026-10-30)
 
@@ -142,6 +151,11 @@ lit pixels, coloured by the rule above.
 What it can get wrong: where two sprites overlap and one is erased, the
 other's pixels that come back take the erasing call's colour (outdoors,
 the erase's ATTR_T is white).
+
+One exception (2026-10-30): the doors' graphics (door_gfx32 and
+door_gfx24's frames) are scenery that moves, drawn in mode 1 over the
+door's own cells, which the original shows in their red. Their pixels
+take their cell's ink, as the original's do, not ATTR_P's cyan.
 
 ## 6. The pace: a fixed pass length (Matt, 2026-10-30)
 

@@ -68,7 +68,10 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
                 const pc = JSON.parse(await b.regs()).pc;
                 const stop = Object.entries(b.syms).find(([k, v]) => v === pc && /^vm_|print_bad/.test(k));
                 const acc = await b.peekw("acc");
-                console.log(`${name}: pass ${blocks.length} never began: ${stop ? stop[0] : "pc " + pc.toString(16)}, acc ${acc}`);
+                const vpc = await b.peekw("vpc");
+                let at = null;
+                for (const [k, v] of Object.entries(b.syms)) if (/^L\d+$/.test(k) && v <= vpc && (!at || v > b.syms[at])) at = k;
+                console.log(`${name}: pass ${blocks.length} never began: ${stop ? stop[0] : "pc " + pc.toString(16)}, acc ${acc}, in ${at}`);
                 break;
             }
             for (const [a, v] of pokes) {

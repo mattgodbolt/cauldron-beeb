@@ -43,9 +43,12 @@ ATTR_P, MASK_P, ATTR_T, MASK_T, P_FLAG = 23693, 23694, 23695, 23696, 23697
 SPRITE = 25431
 # Graphic sets (docs/research/data.md): first frame, rows, width, frames.
 SETS = [(42450, 8, 3, 2), (43590, 24, 3, 4), (43878, 24, 3, 20), (50800, 24, 3, 4), (51090, 24, 3, 8),
-        (52300, 32, 4, 4), (52948, 16, 2, 4), (53204, 16, 2, 4), (53532, 24, 2, 4), (53730, 16, 3, 4),
+        (52300, 32, 4, 4), (53532, 24, 2, 4), (52948, 16, 2, 4), (53204, 16, 2, 4), (53532, 24, 2, 4), (53730, 16, 3, 4),
         (54120, 24, 3, 8), (54696, 24, 3, 4), (54984, 24, 3, 4), (55272, 24, 3, 4), (60100, 24, 2, 5)]
 ATTRS = [67, 69, 71, 2, 4, 5, 7, 66, 68]
+# The doors' graphics (src/sprite.6502's DOOR_FROM, DOOR_TO): their pixels
+# take their cell's ink (decision 5).
+DOORS = [(52300, 52300 + 4 * 128), (53532, 53532 + 4 * 48)]
 
 
 def gen_case(rnd):
@@ -76,6 +79,7 @@ def model_calls(case, bg, maps):
     """SPRITE's calls on a model of the screen: the lit pixels as bytes at
     the Spectrum's offsets, and each pixel's logical colour."""
     bits = bytearray(bg[:6144])
+    attrs_now = bytearray(bg[6144:6912])
     colour = [[0] * 256 for _ in range(192)]
     for line in range(192):
         for x in range(256):
@@ -84,12 +88,26 @@ def model_calls(case, bg, maps):
     for n in case["calls"]:
         gfx, x, y, rows, width, mode, battr = case["blocks"][n]
         ink = (battr if mode == 0 else case["attr_p"] if mode == 1 else case["attr_t"]) & 7
+        door = any(lo <= gfx < hi for lo, hi in DOORS)
         shift, ncells = x & 7, width + (1 if x & 7 else 0)
         for r in range(rows):
             row = list(GFX[gfx + r * width:gfx + (r + 1) * width]) + [0]
             v = int.from_bytes(bytes(row), "big") >> shift
             shifted = v.to_bytes(width + 1, "big")
             base = spec_offset(175 - y + r, x >> 3)
+            for i in range(ncells):
+                # the row's attributes first, as SPRITE does (each from the
+                # screen address's low byte and its third)
+                off = base + i
+                aa = (off >> 11) * 256 + (off & 255)
+                old = attrs_now[aa]
+                if mode == 0:
+                    new = battr if old == case["attr_p"] else old
+                elif mode == 1:
+                    new = case["attr_p"] if old == battr else old
+                else:
+                    new = (old & case["mask_t"]) | (case["attr_t"] & ~case["mask_t"] & 255)
+                attrs_now[aa] = new
             for i in range(ncells):
                 off = base + i
                 assert off < 6144, "into the attributes"
@@ -105,7 +123,11 @@ def model_calls(case, bg, maps):
                         else:
                             scenery = bg[spec_offset(line, col)] & (0x80 >> p)
                             home = maps[line // 8][bg[6144 + (line // 8) * 32 + col] & 7]
-                            colour[line][px] = home if scenery else maps[line // 8][ink]
+                            own = maps[line // 8][ink]
+                            if door:
+                                # (a door: the colour of its cell's ink, after this call's attributes)
+                                own = maps[line // 8][attrs_now[(line // 8) * 32 + col] & 7]
+                            colour[line][px] = home if scenery else own
     return bits, colour
 
 

@@ -69,6 +69,28 @@ make venv       # .venv with SkoolKit and Pillow (needs uv)
   `@label` / `?sym` by baron symbol.
 - `python3 tools/grid.py out.png cols a.png b.png ...` tiles screenshots.
 
+## The logic: the original's BASIC, compiled again (decision 10)
+
+- `tools/bas2vm.py` compiles `tools/decompile.py`'s trees to bytecode
+  (`build/logic.6502`) for `src/vm.6502`, with the original library's
+  semantics (`src/basrt.6502`). The runtime's operations that touch the
+  screen, the keys and sound are `src/vmio.6502`, the landscape's
+  machine code `src/scroll.6502`; USR goes by the original's address to
+  the port's routine (`USR_AT`/`USR_DO`).
+- Memory as the original addresses it, translated (`src/vmxlat.6502`:
+  regions measured by `tools/zxaccess.py`). An address with no place
+  stops at `vm_bad_address`; an operation not built at `vm_unbuilt`.
+- Two sideways banks (decision 11): CAULDAT (drawing data) and CAULLOG
+  (bytecode, logic tables, paged in while the interpreter runs). Code
+  that reads the data's pages it in (`page_data`, `page_logic`).
+- `make vm`: every statement on py65 against the Z80 from the same
+  random state. `make passes`: the original and the test disc
+  (`-D VMBRK=1`) played side by side (`tests/scenarios.txt`, with
+  `=ADDR:VALUE` to set scenes up), every variable compared every pass.
+  Add a scenario for each behaviour that lands.
+- BASIC's AND evaluates both sides, so arrays are read out of range
+  (38012 reads below `ingr` into the code): keep the bytes it reads.
+
 ## The original, briefly
 
 - The TAP's BASIC loads the screen at 40000 (copied to the display), the
