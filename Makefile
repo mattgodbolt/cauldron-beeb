@@ -5,9 +5,12 @@
 #   make run      boot it in jsbeeb, screenshot to shots/run.png
 #   make check    every check: make draw (MODEL=Master to run them on a
 #                 Master 128; default B-DFS1.2)
-#   make draw     every landscape screen and room the BBC draws, byte for
-#                 byte against the original's (tools/drawcheck.mjs,
-#                 tools/drawcmp.py)
+#   make draw     every outdoor scene (panel, sky, landscape screen) and
+#                 room the BBC draws, byte for byte against the original's
+#                 own drawing of them (tools/drawcheck.mjs, tools/drawcmp.py,
+#                 tools/zxscene.py), attributes too
+#   make splits   the palette splits' timing, the panel's rows checked in a
+#                 screenshot (tools/splitsweep.py, decision 4)
 #   make disc     rebuild from a clean tree and copy the disc to
 #                 cauldron.ssd, which the README links
 #   make fetch    download the Spectrum original into original/
@@ -36,7 +39,7 @@ GENERATED = build/data/title.bin build/data/landmap.bin
 BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run check draw disc fetch zx disasm venv clean
+.PHONY: all run check draw splits disc fetch zx disasm venv clean
 
 all: $(TARGET)
 
@@ -47,11 +50,20 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
 
-check: draw
+check: draw splits
 
-draw: $(TARGET) build/cauldron.z80
+# The palette splits where the build puts them (decision 4): the panel's
+# rows in their colours, no pixel wrong.
+splits: $(TARGET)
+	python3 tools/splitsweep.py $$(sed -n 's/^    SPLIT_ADJ = \([0-9]*\)$$/\1/p' src/irq.6502) 1000 1000 --check
+
+draw: $(TARGET) build/zxscenes/room_63.scr
 	node tools/drawcheck.mjs
 	$(PYTHON) tools/drawcmp.py
+
+# The oracle: every scene drawn by the original's own code.
+build/zxscenes/room_63.scr: build/cauldron.z80 tools/zxscene.py
+	$(PYTHON) tools/zxscene.py
 
 # Always from a clean tree, so the stamp names the commit the disc holds.
 disc:

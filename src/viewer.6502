@@ -1,6 +1,7 @@
 \ ***************************************************************************
 \ The viewer: the drawing layer on show, not the game. Z and X step
-\ through the landscape's screens or the rooms, SPACE switches between
+\ through the outdoor scenes (each landscape screen under the panel and
+\ the sky) or the underground ones (each room), SPACE switches between
 \ them. tools/drawcheck.mjs pokes view_kind and view_num instead and runs
 \ to viewer_wait, where view_shown says what is drawn.
 \ ***************************************************************************
@@ -15,12 +16,12 @@ K_X     = &42
 {
     LDA view_kind : STA view_shown
     LDA view_num : STA view_shown+1
-    LDA #0 : JSR clear_rows
+    JSR init_splits
     LDA view_kind : BNE room
-    LDA view_num : JSR draw_land_screen
+    LDA view_num : JSR outdoor_scene
     JMP done
 .room
-    LDA view_num : JSR draw_room
+    LDA view_num : JSR underground_scene
 .done
     JSR wait_released
 }

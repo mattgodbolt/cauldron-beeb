@@ -26,7 +26,11 @@ vsyncs      = ZP_FIXED + 0      ; VSyncs so far (irq.6502)
 view_kind   = ZP_FIXED + 1      ; the viewer's: 0 landscape, 1 rooms
 view_num    = ZP_FIXED + 2      ; ... which one
 view_shown  = ZP_FIXED + 3      ; ... and the kind and number drawn (2 bytes)
-ZP_END      = ZP_FIXED + 5
+splits_on   = ZP_FIXED + 5      ; the palette splits run (irq.6502)
+irq_split   = ZP_FIXED + 6      ; 4 * the next split
+lower_l1    = ZP_FIXED + 7      ; the lower band's colours, logical 1 and 3
+lower_l3    = ZP_FIXED + 8
+ZP_END      = ZP_FIXED + 9
     ASSERT ZP_END <= &90        ; (&90-&9F: Econet, &A0-: the OS's NMI and beyond)
 
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
@@ -53,6 +57,9 @@ SECTION Data, org = &8000, load = &FFFF3000, exec = &FFFF3000, filename = "CAULD
 .blocks     INCBIN "../build/data/blocks.bin"
 .rooms      INCBIN "../build/data/rooms.bin"
 .underfont  INCBIN "../build/data/underfont.bin"
+.panelfont  INCBIN "../build/data/panelfont.bin"
+.scenery    INCBIN "../build/data/scenery.bin"
+.bandmaps   INCBIN "../build/data/bandmaps.bin"
 .data_end
     PRINT "sideways data &8000-&", ~data_end
     ASSERT &3000 + data_end - &8000 <= &7C00    ; (loaded at &3000, below MODE 7's screen)
@@ -70,6 +77,7 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     SEI
     LDX #&FF : TXS
     JSR init_system
+    JSR init_cmaps
     JSR set_palette
     JSR wait_vsync
     LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
@@ -134,10 +142,17 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     INCLUDE "draw.6502"
     INCLUDE "land.6502"
     INCLUDE "room.6502"
+    INCLUDE "print.6502"
+    INCLUDE "scene.6502"
     INCLUDE "viewer.6502"
 
 
-.palette_ula    SKIP 16
+.frame_ula      SKIP 16         ; the palette VSync writes (irq.6502)
+.split_ula      SKIP 4 * SPLITS ; each split's four writes
+.cmaps          SKIP 6 * 8      ; the bands' colour maps (draw.6502)
+.row_map        SKIP 24
+    ALIGN &100
+.attrs          SKIP 768        ; the Spectrum's attributes, as they would be
 \ The loading screen's four colours (provisional: tools/mkscreen.py picks
 \ them).
 .palette_phys

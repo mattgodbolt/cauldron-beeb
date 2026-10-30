@@ -7,11 +7,13 @@
 \ ***************************************************************************
 
 ROOM_ROW = 3                    ; the first row of blocks' character row
+ROOM_BACK = 5                   ; the background's attribute in play (cyan on black)
 
 ZA_AUTO2 room_types             ; the room's 40 block types
 ZA_AUTO2 room_block             ; a block's 24 bytes
 ZA_AUTO1 room_row               ; the cell being drawn
 ZA_AUTO1 room_col
+ZA_AUTO1 room_attr
 
 \ Draw room A (0-63), clearing rows 4-23 first, and set its palette.
 .draw_room
@@ -20,15 +22,21 @@ ZA_AUTO1 room_col
     TAX
     LDA room_lo,X : STA room_types
     LDA room_hi,X : STA room_types+1
-    \ The colour map (8 bytes a room) and palette (4 after all the maps).
-    TXA : ASL A : ASL A : ASL A : STA room_cmap+1   ; (8 * 63 < 512: the carry)
-    LDA #HI(roompal) : ADC #0 : STA room_cmap+2
-    ASSERT LO(roompal) = 0
-    TXA : ASL A : ASL A : STA pal_src               ; (4 * 63 < 256)
-    LDA #HI(roompal + 8 * 64) : STA pal_src+1
-    ASSERT LO(roompal + 8 * 64) = 0
-    JSR palette_from
+    \ Its map (8 bytes a room) and colours (2 a room after all the maps).
+    TXA : PHA
+    LDY #0 : STY cmap_src+1
+    ASL A : ASL A : ASL A : ROL cmap_src+1      ; (8 * 63 < 512)
+    ADC #LO(roompal) : STA cmap_src
+    LDA cmap_src+1 : ADC #HI(roompal) : STA cmap_src+1
+    JSR set_lower_cmap
+    PLA : ASL A : TAY                           ; (2 * 63 < 256)
+    LDX roompal + 8 * 64 + 1,Y
+    LDA roompal + 8 * 64,Y
+    CLC : JSR set_lower_palette
+    \ The original's 45710 clears rows 4-23 and sets their attributes to
+    \ the background's, (23297): ROOM_BACK in play.
     LDA #ROOM_ROW + 1 : JSR clear_rows
+    LDA #ROOM_ROW + 1 : LDX #ROOM_BACK : JSR fill_attrs
     LDA #0 : STA bi
 .next_block
     LDY bi : LDA (room_types),Y : BEQ skip
@@ -81,10 +89,9 @@ ZA_AUTO1 room_col
 .room_char
     CMP #32 : BEQ room_char_done
     PHA
-    TXA : AND #7 : TAX
-.room_cmap
-    LDA roompal,X : TAX             ; (its address patched in by draw_room)
-    LDA colour_bytes,X : STA ink_mask
+    TXA : AND #7 : PHA : TAX
+    LDA room_row : JSR ink_for
+    PLA : ORA #&40 : STA room_attr  ; (BRIGHT on black, as 45847 sets it)
     PLA
     \ glyph = underfont + 8 * the character - 256
     LDX #0 : STX glyph+1
@@ -92,6 +99,7 @@ ZA_AUTO1 room_col
     CLC : ADC #LO(underfont - 256) : STA glyph
     LDA glyph+1 : ADC #HI(underfont - 256) : STA glyph+1
     LDA room_row : LDX room_col : JSR cell_at
+    LDA room_attr : JSR set_attr
     JMP draw_cell
 .room_char_done
     RTS

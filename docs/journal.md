@@ -137,3 +137,25 @@ the viewer draw all 61 screens and 64 rooms and dumps them, and
 maps and compares bytes and palettes. Two bugs on the way: a jump into
 the middle of an instruction (`viewer + 3`), and the offset of screens
 32 on losing a carry. All match on the B and the Master.
+
+### The scenes: the panel, the sky, and the splits
+
+The panel and the sky are printed through the ROM from strings of INK,
+AT and BRIGHT codes (55565 and its other entries), so the port has a
+small PRINT (`src/print.6502`) that keeps the Spectrum's attribute file
+as it would be (`attrs`): the game logic reads attributes (the grass's 65
+under a landing) and pixels (POINT for the trees), so the port's screen
+must have the original's lit pixels and its attributes, colour aside.
+
+`tools/zxscene.py` has the original's own code draw every outdoor scene
+(CLS under ATTR_P 71, 55565, 57228) and every underground one (ATTR_P 5,
+CLS, 55569, 45710), and `make draw` now compares the BBC's whole screen,
+its attributes and its colours with those: all match on the B and the
+Master. The ROM's CLS gives rows 22-23 BORDCR's attribute, which the
+port copies.
+
+Decision 4 lays the splits out so each changes one logical colour (four
+ULA writes) where nothing beside it shows that colour. The interrupt
+takes a table of splits; `tools/splitsweep.py` builds with each timing
+and counts wrong pixels in a screenshot's panel rows: clean from 88 to
+116 on both machines, parked at 102.

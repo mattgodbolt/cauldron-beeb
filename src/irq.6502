@@ -1,31 +1,189 @@
 \ ***************************************************************************
 \ The interrupt handler. It owns IRQ1V outright (after the port kit's
 \ lib/irq.6502): nothing goes to the OS, so the OS's 100Hz tick, sound and
-\ keyboard interrupt stop, and its workspace stays still. VSync only, for
-\ now: it counts frames and writes the palette.
+\ keyboard interrupt stop, and its workspace stays still.
+\
+\ Two sources: VSync (System VIA CA1) and the User VIA's T1, which splits
+\ the palette between the bands (decision 4). T1 runs free: VSync starts
+\ it and sets its latch to the period after, and each split sets the one
+\ after that, so only VSync's latency moves the splits.
 \
 \ In MODE 1 a palette entry is picked by more than the pixel's own colour:
 \ the ULA forms the entry number from bits 7, 5, 3 and 1 of a shift
 \ register that moves one bit a pixel, so a pixel's entry depends on its
-\ neighbour's colour too. All sixteen entries are written (palette_ula).
+\ neighbour's too. Entry i shows logical colour (bit 3 of i, bit 1 of i):
+\ each logical colour has four entries. A split changes one logical
+\ colour, four writes, which fit a horizontal blank (16us of 32).
 \ ***************************************************************************
 
+\ The &FE21 value for entry i showing physical colour phys.
+FUNCTION ula_value(i, phys) = i * 16 + (phys EOR 7)
+\ Logical colour l's first entry; its others are 1, 4 and 5 more.
+FUNCTION ula_base(l) = (l AND 2) * 4 + (l AND 1) * 2
+
+\ Physical colours.
+PHYS_BLACK   = 0
+PHYS_RED     = 1
+PHYS_GREEN   = 2
+PHYS_YELLOW  = 3
+PHYS_BLUE    = 4
+PHYS_MAGENTA = 5
+PHYS_CYAN    = 6
+PHYS_WHITE   = 7
+
+\ The panel's row 0 (decision 4): logical 1 yellow, 2 magenta, 3 green.
+PANEL_PHYS = {PHYS_BLACK, PHYS_YELLOW, PHYS_MAGENTA, PHYS_GREEN}
+
+\ The splits, in order down the screen (decision 4), and the row and line
+\ each lands before:
+\   0  row 1     logical 2 cyan
+\   1  row 2     logical 2 magenta
+\   2  row 3     logical 2 cyan
+\   3  row 3, line SPLIT_L3_LINE: logical 3 the sky's white, or the room's
+\                (row 3 shows yellow and cyan only)
+\   4  row 4     logical 1 the landscape's or the room's (the sky shows
+\                none of logical 1)
+\   5  row 16    logical 3 the landscape's (underground: the room's again)
+SPLITS = 6
+SPLIT_L3_LINE = 4
+\ When split 0 fires, in microseconds after VSync: before row 1. Swept on
+\ jsbeeb with tools/splitsweep.py (2026-10-30, docs/journal.md): clean from
+\ 88 to 116 on the B and the Master; 102 sits in the middle. (-D
+\ SPLIT_SWEEP=n moves it, to measure.)
+IF DEFINED(SPLIT_SWEEP)
+    SPLIT_ADJ = SPLIT_SWEEP
+ELSE
+    SPLIT_ADJ = 102
+ENDIF
+SPLIT_FIRST = 83 * SL + SPLIT_ADJ - 8 * SL
+\ The periods between splits (a VIA timer counts its latch + 2).
+FUNCTION t1_period(lines) = lines * SL - 2
+\ Split k latches the period from split k + 1 to k + 2.
+.split_latch
+    EQUW t1_period(8)                   ; 1 to 2: row 2 to row 3
+    EQUW t1_period(SPLIT_L3_LINE)       ; 2 to 3
+    EQUW t1_period(8 - SPLIT_L3_LINE)   ; 3 to 4: to row 4
+    EQUW t1_period(12 * 8)              ; 4 to 5: row 4 to row 16
+    EQUW &FFFF, &FFFF                   ; (none after 5)
 
 .irq_handler
 {
     ZA_INTERRUPT
-    LDA sysvia_ifr : AND #2 : BEQ done
-    STA sysvia_ifr              ; acknowledge
-    INC vsyncs
     TXA : PHA
+    BIT usrvia_ifr : BVC not_t1     ; (T1's flag is bit 6)
+    LDA usrvia_t1cl                 ; acknowledge
+    LDX irq_split
+    LDA split_ula,X : STA ula_pal
+    LDA split_ula+1,X : STA ula_pal
+    LDA split_ula+2,X : STA ula_pal
+    LDA split_ula+3,X : STA ula_pal
+    TXA : LSR A : TAX               ; (4 * the split: 2 * it indexes split_latch)
+    LDA split_latch,X : STA usrvia_t1ll
+    LDA split_latch+1,X : STA usrvia_t1lh
+    LDA irq_split : CLC : ADC #4 : STA irq_split
+    BNE done                        ; (always)
+    ZA_UNREACHABLE
+.not_t1
+    LDA sysvia_ifr : AND #2 : BEQ done
+    STA sysvia_ifr                  ; acknowledge
+    INC vsyncs
+    LDA splits_on : BEQ palette
+    LDA #LO(SPLIT_FIRST) : STA usrvia_t1cl
+    LDA #HI(SPLIT_FIRST) : STA usrvia_t1ch     ; starts the count
+    LDA #LO(t1_period(8)) : STA usrvia_t1ll    ; ... then from split 0 to 1
+    LDA #HI(t1_period(8)) : STA usrvia_t1lh
+.palette
     LDX #15
 .entries
-    LDA palette_ula,X : STA ula_pal
+    LDA frame_ula,X : STA ula_pal
     DEX : BPL entries
-    PLA : TAX
+    INX : STX irq_split             ; 0
 .done
-    LDA &FC                     ; the interrupted A, saved by the OS
+    PLA : TAX
+    LDA &FC                         ; the interrupted A, saved by the OS
     RTI
+}
+    ASSERT SPLITS * 4 < 256
+
+\ The panel's row 0 palette, all sixteen entries: frame_ula's in a scene,
+\ written at each VSync.
+.vsync_ula
+FOR i = 0..15
+    EQUB ula_value(i, PANEL_PHYS[(i AND 8) DIV 4 + (i AND 2) DIV 2])
+NEXT
+
+\ Split X (0 to SPLITS - 1) shows physical colour A as logical colour Y.
+\ X and Y are kept.
+.set_split
+{
+    ZA_AUTO1 phys
+    EOR #7 : STA phys
+    TXA : PHA
+    ASL A : ASL A : TAX             ; split_ula + 4 * the split
+    LDA split_base,Y : ORA phys
+    STA split_ula,X                 ; entry base
+    ORA #&10 : STA split_ula+1,X    ; base + 1
+    ORA #&40 : STA split_ula+2,X    ; base + 5
+    AND #&EF : STA split_ula+3,X    ; base + 4
+    PLA : TAX
+    RTS
+}
+.split_base
+FOR l = 0..3
+    EQUB ula_base(l) * 16
+NEXT
+
+\ The palette for the scenes: the panel's at VSync, then the splits
+\ (decision 4), the ones that are always the same (0-2) and the lower
+\ band's as for the sky (outdoors) until a scene sets it.
+.init_splits
+{
+    LDX #15
+.frame
+    LDA vsync_ula,X : STA frame_ula,X
+    DEX : BPL frame
+    LDA #1 : STA splits_on
+    LDY #2
+    LDX #0 : LDA #PHYS_CYAN : JSR set_split
+    INX : LDA #PHYS_MAGENTA : JSR set_split
+    INX : LDA #PHYS_CYAN : JSR set_split
+    LDY #3 : INX : LDA #PHYS_WHITE : JSR set_split
+    RTS
+}
+
+\ Without splits (the title): logical colours 0-3 show the physical
+\ colours at palette_phys, all sixteen entries in frame_ula.
+.set_palette
+{
+    LDA #0 : STA splits_on
+    LDY #15
+.entry
+    LDX entry_logical,Y
+    TYA : ASL A : ASL A : ASL A : ASL A
+    ORA palette_phys,X : EOR #7
+    STA frame_ula,Y
+    DEY : BPL entry
+    RTS
+}
+.entry_logical
+FOR i = 0..15
+    EQUB (i AND 8) DIV 4 + (i AND 2) DIV 2
+NEXT
+
+\ The lower band's colours (decision 4): A = logical 1's physical colour,
+\ X = logical 3's. C set for outdoors (the sky's white in logical 3 until
+\ row 16), clear for underground (the room's from row 3).
+.set_lower_palette
+{
+    STA lower_l1 : STX lower_l3     ; (kept: tools/drawcheck.mjs reads them)
+    PHP
+    LDX #4 : LDY #1 : JSR set_split
+    LDA lower_l3 : LDX #5 : LDY #3 : JSR set_split
+    PLP : LDA #PHYS_WHITE : BCS sky
+    LDA lower_l3
+.sky
+    LDX #3 : JSR set_split
+    RTS
 }
 
 \ Wait for the next VSync.
@@ -36,22 +194,3 @@
     CMP vsyncs : BEQ wait
     RTS
 }
-
-\ Logical colours 0-3 show the physical colours at palette_phys: fill all
-\ sixteen entries of palette_ula, which the interrupt writes every frame.
-\ Entry i is logical colour (bit 3 of i, bit 1 of i) beside another.
-.set_palette
-{
-    LDY #15
-.entry
-    LDX entry_logical,Y
-    TYA : ASL A : ASL A : ASL A : ASL A
-    ORA palette_phys,X : EOR #7
-    STA palette_ula,Y
-    DEY : BPL entry
-    RTS
-}
-.entry_logical
-FOR i = 0..15
-    EQUB (i AND 8) DIV 4 + (i AND 2) DIV 2
-NEXT

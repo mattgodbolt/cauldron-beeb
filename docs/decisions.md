@@ -62,3 +62,43 @@ whichever logical colour is nearest in each band costs nothing in the
 background. The panel needs five colours with four at most in any one
 row, so it may take a split a row. And during the push scroll two
 landscape screens are on view at once: their palettes may not agree.
+
+## 4. The splits: one logical colour each, cyan kept for sprites (2026-10-30, provisional)
+
+How decision 3's bands are split. A split can change one logical colour
+cleanly: its four palette entries are four writes, 16us, inside the
+32us horizontal blank. So the bands are laid out for each split to
+change one, and each logical colour to change only where nothing on
+the line above or below shows it:
+
+| Split | Lands before | Changes |
+|---|---|---|
+| VSync | row 0 | all sixteen: logical 1 yellow, 2 magenta, 3 green |
+| 0 | row 1 | logical 2 cyan |
+| 1 | row 2 | logical 2 magenta |
+| 2 | row 3 | logical 2 cyan |
+| 3 | row 3, line 4 | logical 3: the sky's white, or the room's (row 3 shows only yellow and cyan) |
+| 4 | row 4 | logical 1: the landscape's or the room's (the sky shows none of logical 1) |
+| 5 | row 16 | logical 3: the landscape's |
+
+The panel uses four inks, at most three in a row (`graphics.md`, and the
+flight snapshot's rows: magenta and yellow; green, cyan and yellow;
+magenta, green and yellow; cyan and yellow). The sky uses white and the
+sprites' cyan.
+
+**Cyan is logical 2 everywhere below the panel.** It is the colour the
+original turns the cells under the witch and the bats outdoors (the
+clash, `graphics.md`), the witch's colour underground, and every room
+has cyan in it. So the sprites have their colour in every band without a
+split, and the landscape and rooms keep two inks of their own besides.
+What it costs, as `tools/colourstudy.py`'s counts give it (lit pixels in
+their own colour): the landscape 98.36% (99.33% with three free inks),
+the rooms 100%. Which inks go where is `tools/mkdata.py`'s, checked
+whole by `make draw`.
+
+The splits' timing was swept with `tools/splitsweep.py` (2026-10-30):
+clean from 88 to 116 on the B and the Master, parked at 102 in the middle.
+`make splits` checks it each time.
+
+Still open (D6 in `docs/brief.md`): the enemies' own colours underground
+(white, red, green) in rooms that already have two inks besides cyan.

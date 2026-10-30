@@ -1,0 +1,69 @@
+\ ***************************************************************************
+\ The scenes as the original sets them up: the screen cleared under
+\ ATTR_P, the scenery and panel printed (55565 and its other entries,
+\ docs/research/graphics.md), then the landscape or the room.
+\ ***************************************************************************
+
+\ The scenery's PRINT strings (tools/mkdata.py's scenery.bin, the
+\ original's 55641-56096): offset and length of each.
+SCENERY_ORG = 55641
+FUNCTION scenery_at(a) = scenery + a - SCENERY_ORG
+PANEL_STR   = scenery_at(55641) : PANEL_LEN   = 82  ; the scrolls
+LABELS_STR  = scenery_at(55977) : LABELS_LEN  = 47  ; SC0RE, MAGIC, HAGS
+SKY_STR     = scenery_at(56024) : SKY_LEN     = 73  ; the moon and stars
+COTTAGE_STR = scenery_at(55723) : COTTAGE_LEN = 254 ; the cottage's scrolls
+
+OUT_ATTR   = 71                 ; outdoors, ATTR_P: BRIGHT white on black (27022)
+UNDER_ATTR = 5                  ; underground: cyan on black (35546-35571)
+
+\ PRINT one of the scenery's strings: X = which (scenery_strs), from
+\ attribute A.
+.print_scenery
+{
+    PHA
+    LDA scenery_lo,X : STA print_src
+    LDA scenery_hi,X : STA print_src+1
+    LDA scenery_len,X : STA print_len
+    LDA #LO(panelfont - 256) : STA print_font
+    LDA #HI(panelfont - 256) : STA print_font+1
+    PLA
+    JMP print_string
+}
+SC_PANEL = 0 : SC_LABELS = 1 : SC_SKY = 2 : SC_COTTAGE = 3
+.scenery_lo  EQUB LO(PANEL_STR), LO(LABELS_STR), LO(SKY_STR), LO(COTTAGE_STR)
+.scenery_hi  EQUB HI(PANEL_STR), HI(LABELS_STR), HI(SKY_STR), HI(COTTAGE_STR)
+.scenery_len EQUB PANEL_LEN, LABELS_LEN, SKY_LEN, COTTAGE_LEN
+
+\ CLS under attribute A: the screen and the attributes. The ROM's CLS
+\ gives the lower screen's two rows BORDCR's attribute, which BORDER 0
+\ (30457) leaves white on black.
+LOWER_ATTR = 7
+.cls_attr
+    TAX : LDA #0 : JSR fill_attrs
+    LDA #22 : LDX #LOWER_ATTR : JSR fill_attrs
+    LDA #0 : JMP clear_rows
+
+\ The outdoor scene with landscape screen A: CLS, then 55565 (the moon and
+\ stars, the panel's scrolls and labels), then the landscape (57228).
+.outdoor_scene
+{
+    PHA
+    SEC : JSR set_row_maps
+    LDA #OUT_ATTR : JSR cls_attr
+    LDX #SC_SKY : LDA #OUT_ATTR : JSR print_scenery
+    LDX #SC_PANEL : LDA #OUT_ATTR : JSR print_scenery
+    LDX #SC_LABELS : LDA #OUT_ATTR : JSR print_scenery
+    PLA : JMP draw_land_screen
+}
+
+\ The underground scene with room A: CLS under BRIGHT 0, INK 5, then the
+\ panel alone (55569), then the room (45710).
+.underground_scene
+{
+    PHA
+    CLC : JSR set_row_maps
+    LDA #UNDER_ATTR : JSR cls_attr
+    LDX #SC_PANEL : LDA #UNDER_ATTR : JSR print_scenery
+    LDX #SC_LABELS : LDA #UNDER_ATTR : JSR print_scenery
+    PLA : JMP draw_room
+}

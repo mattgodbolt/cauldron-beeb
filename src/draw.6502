@@ -22,8 +22,10 @@ NEXT
 .colour_bytes
     EQUB cbyte(0), cbyte(1), cbyte(2), cbyte(3)
 
-\ cell_scr = the screen address of row A, column X.
+\ cell_scr = the screen address of row A, column X, and attr_ptr its
+\ attribute's.
 .cell_at
+    JSR attr_at
     ASL A : ADC #HI(screen) : STA cell_scr+1    ; (A < 24: no carry in)
     ASSERT LO(screen) = 0
     TXA : ASL A : ASL A : ASL A : ASL A : STA cell_scr
@@ -62,13 +64,65 @@ NEXT
     RTS
 }
 
-\ Set the palette from the 4 physical colours at (pal_src): logical 0-3.
-ZA_AUTO2 pal_src
-.palette_from
+\ --- Colour ---------------------------------------------------------------
+\ A Spectrum ink becomes a logical colour by its row's band (decisions 3
+\ and 4): cmaps holds the maps, 8 bytes each (the logical colour of inks
+\ 0-7): the panel's rows 0-3, the sky, and the lower band (the landscape
+\ screen's or the room's, set as it is drawn). row_map is each row's map's
+\ offset in cmaps.
+CMAP_SKY   = 4 * 8
+CMAP_LOWER = 5 * 8
+
+\ ink_mask for Spectrum ink X (0-7) in row A. Y is kept.
+.ink_for
 {
+    STX ink_mask
+    TAX : LDA row_map,X : ORA ink_mask : TAX
+    LDA cmaps,X : TAX
+    LDA colour_bytes,X : STA ink_mask
+    RTS
+}
+
+\ The rows' maps outdoors (C set: the sky from row 4 to 15) or
+\ underground (C clear: the room from row 4). X is kept.
+.set_row_maps
+{
+    LDA #CMAP_LOWER : BCC rows4
+    LDA #CMAP_SKY
+.rows4
+    LDY #15
+.middle
+    STA row_map,Y                   ; rows 4-15: the sky's or the lower band's
+    DEY : CPY #4 : BCS middle
+    LDY #23 : LDA #CMAP_LOWER
+.low
+    STA row_map,Y                   ; rows 16-23
+    DEY : CPY #16 : BCS low
     LDY #3
+.panel
+    TYA : ASL A : ASL A : ASL A     ; rows 0-3: the panel's own
+    STA row_map,Y
+    DEY : BPL panel
+    RTS
+}
+
+\ The fixed bands' maps into cmaps (tools/mkdata.py's bandmaps.bin).
+.init_cmaps
+{
+    LDX #CMAP_LOWER - 1
 .copy
-    LDA (pal_src),Y : STA palette_phys,Y
+    LDA bandmaps,X : STA cmaps,X
+    DEX : BPL copy
+    RTS
+}
+
+\ The lower band's map: the 8 bytes at (cmap_src) into cmaps.
+ZA_AUTO2 cmap_src
+.set_lower_cmap
+{
+    LDY #7
+.copy
+    LDA (cmap_src),Y : STA cmaps + CMAP_LOWER,Y
     DEY : BPL copy
-    JMP set_palette
+    RTS
 }

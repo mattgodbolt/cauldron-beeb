@@ -11,7 +11,7 @@
     LDA crtc_regs,X : STA crtc_reg
     LDA crtc_regs+1,X : STA crtc_data
     DEX : DEX : BPL crtc
-    LDA #0 : STA vsyncs
+    LDA #0 : STA vsyncs : STA splits_on
     JMP install_irq
 }
 
@@ -37,7 +37,7 @@
     EQUB 8, CRTC_BLANK
 .crtc_end
 
-\ Put irq_handler on IRQ1V: VSync only.
+\ Put irq_handler on IRQ1V: VSync and User VIA T1 only.
 .install_irq
 {
     SEI
@@ -45,7 +45,10 @@
                                                 ; would hold IRQ asserted
     LDA #LO(irq_handler) : STA irq1v
     LDA #HI(irq_handler) : STA irq1v+1
+    LDA usrvia_acr : AND #&1F : ORA #&40        ; T1 free-running, T2 one-shot
+    STA usrvia_acr
     LDA #&82 : STA sysvia_ier                   ; CA1: VSync
+    LDA #&C0 : STA usrvia_ier                   ; T1
     CLI
     RTS
 }
