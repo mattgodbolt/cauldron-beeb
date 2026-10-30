@@ -210,6 +210,17 @@ ELSE
     LDA #0 : STA mask_p : STA mask_t : STA p_flag
     STA rnd_seed : STA rnd_seed+1 : STA frames : STA frames+1
     JSR chars_rom
+    \ The variables and the FOR slots: zero, as the tape has them.
+    LDX #0 : TXA
+.zero
+    STA bv,X : STA bv+256,X
+    CPX #VARS_LEN - 512 : BCS high
+    STA bv+512,X
+.high
+    CPX #156 : BCS slots
+    STA bslots,X
+.slots
+    INX : BNE zero
     LDA #VM_STACK : STA vsp
     JSR page_logic
     LDA #LO(L25592) : STA vpc : LDA #HI(L25592) : STA vpc+1
@@ -302,6 +313,9 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .room_back      SKIP 1          ; 45710's background (PRBUFF+1)
 .num_lead       SKIP 1          ; PRINT n's
 .num_x          SKIP 1
+.pass_len       SKIP 1          ; op_pass's: frames a pass
+.pass_vsync     SKIP 1          ; ... and when the last began
+.vm_brk         SKIP 2          ; (the VMBRK build's statement breakpoint)
 .work_end
     PRINT "code &0E00-&", ~code_end, ", workspace to &", ~work_end, " (", screen - work_end, " bytes free)"
 ENDSECTION

@@ -234,3 +234,18 @@ the menu's showed stripes.
 
 The menu's colours are the game screen's bands, which don't suit it:
 the front end's own layer will give it its own.
+
+### Pass by pass
+
+`make passes` plays the original and the port side by side
+(`tests/scenarios.txt`: keys held over passes), RND's seed set the same
+just after RANDOMIZE, and compares every variable at the top of every
+main-loop pass. The port's side runs the test disc (`-D VMBRK=1`): the
+interpreter calls `vm_hit` at a chosen statement and `vm_pass` as each
+pass begins, where decision 6's pace waits.
+
+The first run found the port's variables uninitialised (the original's
+are zeros on the tape). After that every pass the port runs agrees:
+standing, flying each way, firing, the bats coming and hitting. Each
+scenario that flies to the edge stops at the push scroll's machine code
+(57042, 57066): the next layer.

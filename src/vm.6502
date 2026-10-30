@@ -14,6 +14,13 @@
 .vm_run
 .vm_next
 {
+IF DEFINED(VMBRK)
+    \ The tests' statement breakpoint: vm_hit when vpc reaches vm_brk.
+    LDA vpc : CMP vm_brk : BNE go
+    LDA vpc+1 : CMP vm_brk+1 : BNE go
+    JSR vm_hit
+.go
+ENDIF
     LDY #0 : LDA (vpc),Y
     INC vpc : BNE same : INC vpc+1
 .same
@@ -23,6 +30,11 @@
     RTS                             ; (to op_<name>, the table holds it less 1)
     INCLUDE "../build/vmjump.6502"
 }
+
+IF DEFINED(VMBRK)
+.vm_hit                             ; (global: the tests' breakpoint)
+    RTS
+ENDIF
 
 \ The next bytecode byte into A; the next word into vm_w.
 .vm_byte

@@ -5,6 +5,10 @@
 #   make run      boot it in jsbeeb, screenshot to shots/run.png
 #   make check    every check: make draw (MODEL=Master to run them on a
 #                 Master 128; default B-DFS1.2)
+#   make passes   the original and the port played side by side with the
+#                 same keys and seed (tests/scenarios.txt), their variables
+#                 compared at every pass (tools/zxpass.py, tools/beepass.mjs,
+#                 tools/passcmp.py)
 #   make draw     every outdoor scene (panel, sky, landscape screen) and
 #                 room the BBC draws, byte for byte against the original's
 #                 own drawing of them (tools/drawcheck.mjs, tools/drawcmp.py,
@@ -40,12 +44,13 @@ SOURCES  = $(wildcard src/*.6502)
 # Made from the original by the tools, never committed (original/README.md).
 GENERATED = build/data/title.bin build/data/landmap.bin build/logic.6502
 VIEWER   = build/viewer.ssd
+TEST     = build/test.ssd
 # Stamped into !BOOT, so a disc says what it is: UTC build time and the
 # commit, with + if the tree had changes.
 BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' ':(exclude)viewer.ssd' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run check vm draw sprites splits disc fetch zx disasm venv clean
+.PHONY: all run check vm passes draw sprites splits disc fetch zx disasm venv clean
 
 all: $(TARGET) $(VIEWER)
 
@@ -58,6 +63,11 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 $(VIEWER): $(SOURCES) $(GENERATED) | build
 	$(ASM) -D VIEWER=1 -D 'BUILD="$(BUILD) viewer"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) src/main.6502
 
+# The tests' disc: the game with -D VMBRK=1, the interpreter's
+# breakpoints (vm_hit for a statement, vm_pass for a pass) built in.
+$(TEST): $(SOURCES) $(GENERATED) | build
+	$(ASM) -D VMBRK=1 -D 'BUILD="$(BUILD) test"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) src/main.6502
+
 # The original's BASIC, compiled for the interpreter (decision 10).
 build/logic.6502: build/cauldron.z80 tools/bas2vm.py tools/decompile.py tools/decompile_names.py
 	$(PYTHON) tools/bas2vm.py
@@ -65,7 +75,14 @@ build/logic.6502: build/cauldron.z80 tools/bas2vm.py tools/decompile.py tools/de
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
 
-check: vm draw sprites splits
+check: vm passes draw sprites splits
+
+# The original and the port played side by side (tests/scenarios.txt),
+# their variables compared at every pass.
+passes: $(TEST) build/cauldron.z80
+	$(PYTHON) tools/zxpass.py
+	node tools/beepass.mjs
+	$(PYTHON) tools/passcmp.py
 
 vm: build/cauldron.z80
 	$(PYTHON) tools/vmcheck.py

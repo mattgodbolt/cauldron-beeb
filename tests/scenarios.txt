@@ -1,0 +1,10 @@
+# Scenarios for make passes (tools/zxpass.py, tools/beepass.mjs): keys
+# held over main-loop passes, the same on the original and the port, from
+# a game started with RND's seed set after RANDOMIZE. A scenario is a
+# name, a seed, then steps: KEYS*N holds KEYS (L R U D F: left, right,
+# up, down, fire; - for none) for N passes.
+idle        1234  -*60
+fly_right   1234  U*12 R*40 -*10
+fly_left    77    U*12 L*40 -*10
+fire        99    U*8 F*20 RF*20 -*10
+up_down     5     U*30 D*30 LU*20 RD*20

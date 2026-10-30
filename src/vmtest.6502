@@ -20,6 +20,8 @@ SECTION Test, org = &1000, filename = "T"
 .page_data
 .page_logic
     RTS
+.op_pass                            ; (a pass's pace: nothing here)
+    JSR vm_byte : JMP vm_next
 \ (The operations vmio.6502 does, and the screen's: not the interpreter's
 \ own, so the checks stop at them.)
 .op_bad

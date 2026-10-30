@@ -43,7 +43,11 @@ OPS = [
     ("sprite", 0), ("usr", 0), ("rnd", 0), ("inkey", 0), ("in", 0), ("attr", 0), ("point", 0),
     ("chan", 0), ("out", 0), ("str", 0), ("num", 0), ("temps", 0), ("perm", 0), ("cls", 0),
     ("pause", 0), ("halt", 0), ("wait", 2), ("beeper", 0), ("beep", 0),
+    ("pass", 1),
 ]
+# The tops of the main loops: a pass starts there (decision 6's pace, and
+# where the tests compare a pass), with its length in frames.
+PASS_FRAMES = {30489: 5, 35688: 4}
 OPCODE = {name: n for n, (name, _) in enumerate(OPS)}
 STACK_MAX = 16          # src/vm.6502's stack: compile() checks the depth
 
@@ -278,6 +282,8 @@ class Compiler:
             raise Unsupported(f"event {k}")
 
     def statement(self, s):
+        if s.addr in PASS_FRAMES:
+            self.op("pass", str(PASS_FRAMES[s.addr]))
         if s.kind == "next":
             i = (s.var - FOR_VARS) // 2
             if not 0 <= i < 256 or (s.var - FOR_VARS) % 2:

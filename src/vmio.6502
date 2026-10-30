@@ -169,6 +169,28 @@
     JMP vm_next
 }
 
+\ A pass of the main loop begins (decision 6): it waits until the last
+\ began the byte's frames ago (at once if it's later than that).
+.op_pass
+{
+    JSR vm_byte : STA pass_len
+.wait
+    LDA vsyncs : SEC : SBC pass_vsync
+    CMP pass_len : BCS go
+    JSR wait_vsync
+    JMP wait
+.go
+    LDA vsyncs : STA pass_vsync
+IF DEFINED(VMBRK)
+    JSR vm_pass                     ; (the tests' breakpoint for a pass)
+ENDIF
+    JMP vm_next
+}
+IF DEFINED(VMBRK)
+.vm_pass                            ; (global)
+    RTS
+ENDIF
+
 \ --- The keys -------------------------------------------------------------------
 \ IN port: the Kempston joystick's 31 reads 0, no interface (as the
 \ original's headless harness has it); nothing else is read.
