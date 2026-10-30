@@ -1,0 +1,257 @@
+\ ***************************************************************************
+\ SPRITE: the compiler library's sprite routine (25431,
+\ docs/research/runtime.md), without its colour clash (decision 5). A
+\ parameter block (sprite_blocks, eight of 8 bytes, as the original's at
+\ 24759) gives the graphic's address (the original's), x, y in PLOT
+\ coordinates (175 the top line), rows, width in bytes, an attribute mode
+\ and an attribute. Each pixel row XORs onto the screen, unmasked; before
+\ it, the attributes of the cells it covers change by the mode:
+\
+\   0: a cell still ATTR_P takes the block's attribute (draw underground)
+\   1: a cell with the block's attribute goes back to ATTR_P (its erase)
+\   2: the cell takes the print colours, (old AND MASK_T) OR (ATTR_T AND
+\      NOT MASK_T), as the ROM's PO-ATTR (outdoors)
+\
+\ The attributes are kept exactly (`attrs`: the game logic reads them),
+\ and the screen's lit and unlit pixels are exactly the original's (the
+\ logic's POINT reads them). Only the colours differ: a pixel the XOR
+\ lights takes the scenery's colour if the scenery has it lit (the cell's
+\ glyph, cell_info) and the sprite's colour if not; a lit pixel the XOR
+\ leaves lit keeps its colour.
+\
+\ Nothing clips: a row running past column 31 carries on where the
+\ Spectrum's screen address + i goes, and its attribute where the
+\ original's derives it from that address (sprite_dest).
+\ ***************************************************************************
+
+SPR_MAX_W = 4                   ; the widest graphic (the door's 4 bytes)
+
+ZA_AUTO2 spr_gfx                ; the graphic's next row
+ZA_AUTO1 spr_line               ; the screen line of the next row (175 - y)
+ZA_AUTO1 spr_rows
+ZA_AUTO1 spr_w
+ZA_AUTO1 spr_mode
+ZA_AUTO1 spr_attr
+ZA_AUTO1 spr_ink                ; the sprite's own colour, a Spectrum ink
+ZA_AUTO1 spr_shift              ; x MOD 8
+ZA_AUTO1 spr_col                ; x DIV 8
+ZA_AUTO1 spr_cells              ; cells a row covers: w, or w + 1 shifted
+ZA_AUTO1 spr_i
+ZA_AUTO1 dst_line               ; sprite_dest's: where cell i of the row goes
+ZA_AUTO1 dst_col
+ZA_AUTO1 dst_arow               ; ... and the attribute it changes
+ZA_AUTO1 dst_acol
+
+\ Draw sprite block X (0-7).
+.sprite
+{
+    TXA : ASL A : ASL A : ASL A : TAX
+    LDA sprite_blocks,X : STA spr_gfx
+    LDA sprite_blocks+1,X : STA spr_gfx+1
+    LDA sprite_blocks+2,X : PHA
+    LDA #175 : SEC : SBC sprite_blocks+3,X : STA spr_line
+    LDA sprite_blocks+4,X : STA spr_rows
+    LDA sprite_blocks+5,X : STA spr_w
+    LDA sprite_blocks+6,X : STA spr_mode
+    LDA sprite_blocks+7,X : STA spr_attr
+    JSR sprite_gfx
+    PLA : PHA : AND #7 : STA spr_shift
+    CMP #1                          ; (C set if shifted: one more cell)
+    LDA spr_w : ADC #0 : STA spr_cells
+    PLA : LSR A : LSR A : LSR A : STA spr_col
+    \ The sprite's colour: the ink its mode would give a cell.
+    LDA spr_attr
+    LDX spr_mode : BEQ ink
+    LDA attr_p
+    DEX : BEQ ink
+    LDA attr_t
+.ink
+    AND #7 : STA spr_ink
+    LDA spr_rows : BEQ done
+.row
+    JSR sprite_shift
+    LDA #0 : STA spr_i
+.cell
+    JSR sprite_dest
+    JSR sprite_attr
+    JSR sprite_byte
+    INC spr_i : LDA spr_i : CMP spr_cells : BNE cell
+    INC spr_line
+    LDA spr_gfx : CLC : ADC spr_w : STA spr_gfx
+    BCC next : INC spr_gfx+1
+.next
+    DEC spr_rows : BNE row
+.done
+    RTS
+}
+
+\ spr_gfx: the original's address of the graphic, made the port's (the
+\ regions of tools/mkdata.py's sprites.bin, one after another).
+.sprite_gfx
+{
+    LDX #0
+.region
+    LDA spr_gfx : CMP region_from_lo,X
+    LDA spr_gfx+1 : SBC region_from_hi,X : BCC next     ; below its start
+    LDA spr_gfx : CMP region_to_lo,X
+    LDA spr_gfx+1 : SBC region_to_hi,X : BCS next       ; at or past its end
+    LDA spr_gfx : CLC : ADC region_add_lo,X : STA spr_gfx
+    LDA spr_gfx+1 : ADC region_add_hi,X : STA spr_gfx+1
+    RTS
+.next
+    INX : CPX #SPR_REGIONS : BNE region
+.none
+    JMP none                        ; (no graphic there: the original has none)
+}
+SPR_REGIONS = 4
+SPR_FROM = {42450, 43590, 50800, 60100}
+SPR_TO   = {42498, 45318, 55560, 60340}
+\ Where each region starts in sprites.bin: the ones before it, one after
+\ another.
+SPR_LEN = {SPR_TO[0] - SPR_FROM[0], SPR_TO[1] - SPR_FROM[1], SPR_TO[2] - SPR_FROM[2], SPR_TO[3] - SPR_FROM[3]}
+SPR_START = {sprites, sprites + SPR_LEN[0], sprites + SPR_LEN[0] + SPR_LEN[1], sprites + SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2]}
+.region_from_lo
+FOR n = 0..SPR_REGIONS-1 : EQUB LO(SPR_FROM[n]) : NEXT
+.region_from_hi
+FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_FROM[n]) : NEXT
+.region_to_lo
+FOR n = 0..SPR_REGIONS-1 : EQUB LO(SPR_TO[n]) : NEXT
+.region_to_hi
+FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_TO[n]) : NEXT
+.region_add_lo
+FOR n = 0..SPR_REGIONS-1 : EQUB LO(SPR_START[n] - SPR_FROM[n]) : NEXT
+.region_add_hi
+FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
+
+\ The graphic's row into spr_buf, shifted right by spr_shift: spr_cells
+\ bytes.
+.sprite_shift
+{
+    LDY spr_w : LDA #0 : STA spr_buf,Y  ; (the byte the shift spills into)
+    DEY
+.copy
+    LDA (spr_gfx),Y : STA spr_buf,Y
+    DEY : BPL copy
+    LDX spr_shift : BEQ done
+.shift
+    LSR spr_buf
+    FOR n = 1..SPR_MAX_W
+        ROR spr_buf + n
+    NEXT
+    DEX : BNE shift
+.done
+    RTS
+}
+.spr_buf    SKIP SPR_MAX_W + 1
+
+\ Where cell spr_i of the row on spr_line goes: the Spectrum's screen
+\ address of (spr_line, spr_col) plus spr_i, as dst_line, dst_col, and
+\ the attribute the original derives from that address (its low byte
+\ with the third from the high byte), dst_arow, dst_acol. Past column
+\ 31 the address's low byte carries into the character row in the third,
+\ and from the third's last row into the high byte: the pixel line, and
+\ from line 7 the third.
+.sprite_dest
+{
+    ZA_AUTO1 lo
+    ZA_AUTO1 hi
+    LDA spr_col : CLC : ADC spr_i
+    CMP #32 : BCS wrapped
+    STA dst_col : STA dst_acol
+    LDA spr_line : STA dst_line
+    LSR A : LSR A : LSR A : STA dst_arow
+    RTS
+.wrapped
+    \ hi = 8 * the third + the line; lo = 32 * the row in the third + the
+    \ column (+ i), carrying into hi.
+    PHA
+    LDA spr_line : AND #&C0 : LSR A : LSR A : LSR A : STA hi
+    LDA spr_line : AND #7 : ORA hi : STA hi
+    LDA spr_line : AND #&38 : ASL A : ASL A : STA lo
+    PLA : CLC : ADC lo : STA lo
+    LDA hi : ADC #0 : STA hi
+    LDA lo : AND #31 : STA dst_col : STA dst_acol
+    LDA hi : AND #&18 : STA dst_arow        ; 8 * the third
+    LDA lo : LSR A : LSR A : LSR A : LSR A : LSR A : ORA dst_arow : STA dst_arow
+    \ dst_line = 64 * the third + 8 * the row + the line
+    ASL A : ASL A : ASL A : STA dst_line
+    LDA hi : AND #7 : ORA dst_line : STA dst_line
+    LDA hi : CMP #&18 : BCC done
+    \ Past the bitmap, into the Spectrum's attributes: nothing the port's
+    \ screen holds (the original's limits keep its sprites from it).
+.past
+    JMP past
+.done
+    RTS
+}
+
+\ The attribute of cell dst_arow, dst_acol changed by the mode.
+.sprite_attr
+{
+    LDA dst_arow : LDX dst_acol : JSR attr_at
+    LDY #0 : LDA (attr_ptr),Y
+    LDX spr_mode : BEQ mode0
+    DEX : BEQ mode1
+    \ Mode 2: PO-ATTR, (old AND MASK_T) OR (ATTR_T AND NOT MASK_T).
+    AND mask_t : STA (attr_ptr),Y
+    LDA mask_t : EOR #&FF : AND attr_t
+    ORA (attr_ptr),Y : STA (attr_ptr),Y
+    RTS
+.mode0
+    CMP attr_p : BNE done
+    LDA spr_attr : STA (attr_ptr),Y
+    RTS
+.mode1
+    CMP spr_attr : BNE done
+    LDA attr_p : STA (attr_ptr),Y
+.done
+    RTS
+}
+
+\ XOR cell spr_i's byte of spr_buf onto line dst_line, column dst_col,
+\ coloured as the head of the file says.
+.sprite_byte
+{
+    ZA_AUTO2 scr
+    ZA_AUTO1 home                   ; the scenery's colour in the cell
+    ZA_AUTO1 own                    ; the sprite's colour in the cell's row
+    ZA_AUTO1 bits                   ; the sprite's 4 pixels in this half
+    ZA_AUTO1 bg                     ; the scenery's 4 pixels
+    ZA_AUTO1 lit                    ; the screen's lit pixels before
+    ZA_AUTO1 new                    ; the pixels the XOR lights
+    ZA_AUTO1 out
+    ZA_AUTO1 glyph_byte
+    \ The cell: its screen address, scenery and colours.
+    LDA dst_line : LSR A : LSR A : LSR A : PHA
+    LDX spr_ink : JSR ink_for
+    LDA ink_mask : STA own
+    PLA : LDX dst_col : JSR cell_at
+    JSR cell_info
+    STA home
+    LDA dst_line : AND #7 : TAY
+    LDA (cell_bg),Y : STA glyph_byte
+    TYA : ORA cell_scr : STA scr
+    LDA cell_scr+1 : STA scr+1
+    LDX spr_i : LDA spr_buf,X : LSR A : LSR A : LSR A : LSR A : STA bits
+    LDA glyph_byte : LSR A : LSR A : LSR A : LSR A : STA bg
+    JSR half                        ; the left four pixels
+    LDA scr : ORA #8 : STA scr
+    LDX spr_i : LDA spr_buf,X : AND #15 : STA bits
+    LDA glyph_byte : AND #15 : STA bg
+    \ Fall into half: the right four.
+.half
+    LDY #0
+    LDA (scr),Y : LSR A : LSR A : LSR A : LSR A
+    ORA (scr),Y : AND #15 : STA lit
+    \ What stays lit keeps its colour.
+    LDA bits : EOR #15 : AND lit : TAX
+    LDA spread,X : AND (scr),Y : STA out
+    \ What the XOR lights: the scenery's colour, or the sprite's.
+    LDA lit : EOR #15 : AND bits : STA new
+    AND bg : TAX
+    LDA spread,X : AND home : ORA out : STA out
+    LDA bg : EOR #15 : AND new : TAX
+    LDA spread,X : AND own : ORA out
+    STA (scr),Y
+    RTS
+}

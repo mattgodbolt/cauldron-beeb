@@ -17,6 +17,7 @@ const disc = i >= 0 ? args[i + 1] : "build/cauldron.ssd";
 mkdirSync("build/bbcdraw", { recursive: true });
 const b = await startBeeb({ disc, bootUntil: "shown", symbols: disc.replace(/\.ssd$/, ".json") });
 try {
+    await b.write("view_sprites", [0]);     // the scenes alone
     await b.tap("SPACE");
     await b.runUntil("viewer_wait", 10);
     let bad = 0;

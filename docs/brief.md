@@ -164,14 +164,10 @@ Still open, with a recommendation:
 - **D5. The push scroll's pace.** Keep the push, as the original's
   design, at its measured 2.3 frames a step (each step on VSync).
   Hardware scrolling can't move a third of the screen alone.
-- **D6. Sprite colours.** The original's attribute clash, turning a
-  tree's cells cyan under the witch, can't be copied cell for cell in
-  MODE 1. Options: (a) one logical colour kept for sprites in each band,
-  costing 3% of the background's colour (decision 3's figures); (b)
-  each sprite in the nearest of its band's colours; (c) masked sprites
-  in their own colour over the background. **Recommend (a)** outdoors,
-  where the witch and the bats are all cyan, and to look again
-  underground, where enemies are white, cyan, red or green.
+- **D6. Sprite colours.** Settled: cyan is kept as logical 2 below the
+  panel for the sprites (decision 4), and Matt chose no colour clash
+  (decision 5), with the attributes and the lit pixels kept exactly for
+  the logic.
 - **D7. Sound.** The chirps as SN76489 tones at BEEPER's pitches, a tone
   a step at the step's length; and keep the game stopped while they
   play, as the original does. The menu's click as a short tone.

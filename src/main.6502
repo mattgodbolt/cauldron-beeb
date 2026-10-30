@@ -1,12 +1,14 @@
 \ ***************************************************************************
 \ CAULDRON for the BBC Micro - build file
 \
-\ The screen and drawing layers for now: !BOOT runs CAULDRN, which loads TITLE (the
-\ Spectrum's loading screen, converted by tools/mkscreen.py) straight into
-\ screen memory, takes the machine over and shows it in the Spectrum's
-\ geometry; a key goes on to the viewer (viewer.6502), which draws the
-\ landscape's screens and the rooms. (CAULDRN loads it, not !BOOT: the OS echoes !BOOT's lines into
-\ MODE 7's screen, which is inside ours.)
+\ The screen and drawing layers for now. !BOOT runs CAULDRN, whose loader
+\ puts CAULDAT in a sideways RAM bank and TITLE (the Spectrum's loading
+\ screen, converted by tools/mkscreen.py) straight into screen memory,
+\ then copies the game down to &0E00 and runs it: it takes the machine
+\ over and shows TITLE in the Spectrum's geometry, and a key goes on to
+\ the viewer (viewer.6502), which draws the scenes. (CAULDRN loads TITLE,
+\ not !BOOT: the OS echoes !BOOT's lines into MODE 7's screen, which is
+\ inside ours.)
 \ ***************************************************************************
 
 INCLUDE "defs.6502"
@@ -30,7 +32,12 @@ splits_on   = ZP_FIXED + 5      ; the palette splits run (irq.6502)
 irq_split   = ZP_FIXED + 6      ; 4 * the next split
 lower_l1    = ZP_FIXED + 7      ; the lower band's colours, logical 1 and 3
 lower_l3    = ZP_FIXED + 8
-ZP_END      = ZP_FIXED + 9
+attr_p      = ZP_FIXED + 9      ; the Spectrum's ATTR_P, ATTR_T and MASK_T,
+attr_t      = ZP_FIXED + 10     ; ... which SPRITE's modes read
+mask_t      = ZP_FIXED + 11
+test_n      = ZP_FIXED + 12     ; the viewer's sprite tests to run (viewer.6502)
+view_sprites = ZP_FIXED + 13    ; the viewer draws its sprites over the scenes
+ZP_END      = ZP_FIXED + 14
     ASSERT ZP_END <= &90        ; (&90-&9F: Econet, &A0-: the OS's NMI and beyond)
 
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
@@ -44,9 +51,12 @@ SECTION Title, org = screen, load = &FFFF0000 OR screen, exec = &FFFF0000 OR scr
 ENDSECTION
 
 \ The original's data (tools/mkdata.py, build/data), for the sideways
-\ RAM bank: CAULDRN loads it at &3000 and copies it to the first free bank
+\ RAM bank: CAULDRN loads it at DATA_LOAD and copies it to the first free bank
 \ (find_bank), which stays paged in.
-SECTION Data, org = &8000, load = &FFFF3000, exec = &FFFF3000, filename = "CAULDAT", guard = &C000
+\ DATA_LOAD: high enough to clear CAULDRN's file, low enough for the data
+\ to end below &8000 (over MODE 7's screen, which only shows it).
+DATA_LOAD = &4500
+SECTION Data, org = &8000, load = &FFFF0000 OR DATA_LOAD, exec = &FFFF0000 OR DATA_LOAD, filename = "CAULDAT", guard = &C000
 \ The original's data (tools/mkdata.py, build/data): page-aligned where
 \ the drawing adds an offset to a page: roompal first.
 .roompal    INCBIN "../build/data/roompal.bin"
@@ -62,21 +72,25 @@ SECTION Data, org = &8000, load = &FFFF3000, exec = &FFFF3000, filename = "CAULD
 .bandmaps   INCBIN "../build/data/bandmaps.bin"
 .data_end
     PRINT "sideways data &8000-&", ~data_end
-    ASSERT &3000 + data_end - &8000 <= &7C00    ; (loaded at &3000, below MODE 7's screen)
+    ASSERT DATA_LOAD + data_end - &8000 <= &8000
 ENDSECTION
 
-SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename = "CAULDRN", guard = screen
+\ CAULDRN: the game, assembled to run from &0E00 (the DFS's workspace,
+\ free once the game owns the machine), loaded at &1900 with the loader
+\ after it, which does the disc's work and copies it down.
+SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filename = "CAULDRN"
+.payload
+    SECTION Code, org = &0E00, guard = screen
     ZA_POOL &00..ZP_FIXED-1
+.code_start
 
 .start
 {
     ZA_ENTRY
-    JSR find_bank
-    LDX #LO(title_block) : LDY #HI(title_block)
-    LDA #&FF : JSR osfile           ; load TITLE at its own address
-    SEI
     LDX #&FF : TXS
     JSR init_system
+    LDA #0 : STA test_n
+    LDA #1 : STA view_sprites
     JSR init_cmaps
     JSR set_palette
     JSR wait_vsync
@@ -86,14 +100,57 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     JSR any_key : BEQ shown
     JMP viewer
 
+    INCLUDE "system.6502"
+    INCLUDE "irq.6502"
+    INCLUDE "screen.6502"
+    INCLUDE "draw.6502"
+    INCLUDE "land.6502"
+    INCLUDE "room.6502"
+    INCLUDE "print.6502"
+    INCLUDE "scene.6502"
+    INCLUDE "sprite.6502"
+    INCLUDE "viewer.6502"
+
+\ The sprite graphics (tools/mkdata.py's regions), in main RAM.
+.sprites        INCBIN "../build/data/sprites.bin"
+    ASSERT P% - sprites = SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2] + SPR_LEN[3]
+\ The loading screen's four colours (tools/mkscreen.py picks them).
+.palette_phys
+    INCBIN "../build/data/title_pal.bin"
+.code_end
+    ENDSECTION
+.payload_end
+
+\ The loader: runs where the file loaded, after the payload, and nothing
+\ in it is wanted afterwards. CAULDAT into the sideways bank and TITLE
+\ into the screen, with the OS and the DFS; then the machine is the
+\ game's: the payload down to &0E00, over the DFS's workspace.
+LD_SRC = &80                    ; (the loader's zero page: the game's isn't set up)
+LD_DST = &82
+.loader
+    JSR find_bank
+    LDX #LO(title_block) : LDY #HI(title_block)
+    LDA #&FF : JSR osfile           ; load TITLE at its own address
+    SEI                             ; the interrupts stay off until install_irq
+    LDA #LO(payload) : STA LD_SRC : LDA #HI(payload) : STA LD_SRC+1
+    LDA #LO(code_start) : STA LD_DST : LDA #HI(code_start) : STA LD_DST+1
+    LDX #HI(code_end - code_start + &FF)
+    LDY #0
+.copy_down
+    LDA (LD_SRC),Y : STA (LD_DST),Y ; (upwards, to a lower address: safe)
+    INY : BNE copy_down
+    INC LD_SRC+1 : INC LD_DST+1
+    DEX : BNE copy_down
+    JMP start
+
 \ CAULDAT into the highest free sideways RAM bank: no ROM found there at
 \ start-up, and a byte at &8000 can be flipped. It stays paged in for good
 \ (romshad is the OS's copy of romsel: it puts that back after paging
 \ ROMs itself, so write both). With none, say so and stop.
 .find_bank
 {
-    ZA_AUTO2 src
-    ZA_AUTO2 dst
+    src = LD_SRC
+    dst = LD_DST
     LDX #LO(load_data) : LDY #HI(load_data) : JSR oscli
     SEI
     LDX #15
@@ -114,7 +171,8 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     JMP stop
 .found
     STX romshad
-    LDA #&30 : STA src+1 : LDA #&80 : STA dst+1
+    LDA #HI(DATA_LOAD) : STA src+1 : LDA #&80 : STA dst+1
+    ASSERT LO(DATA_LOAD) = 0
     LDY #0 : STY src : STY dst
 .copy
     LDA (src),Y : STA (dst),Y
@@ -124,7 +182,7 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     CLI
     RTS
 }
-.load_data  EQUS "LOAD CAULDAT 3000", 13
+.load_data  EQUS "LOAD CAULDAT", 13         ; (at its own address, DATA_LOAD)
 .no_ram     EQUS "Cauldron needs 16K of sideways RAM", 13
 .no_ram_end
 
@@ -136,27 +194,19 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
 .title_name
     EQUS "TITLE", 13
 
-    INCLUDE "system.6502"
-    INCLUDE "irq.6502"
-    INCLUDE "screen.6502"
-    INCLUDE "draw.6502"
-    INCLUDE "land.6502"
-    INCLUDE "room.6502"
-    INCLUDE "print.6502"
-    INCLUDE "scene.6502"
-    INCLUDE "viewer.6502"
+.loader_end
+    ASSERT loader_end <= DATA_LOAD  ; (CAULDAT loads above the file)
+ENDSECTION
 
-
+\ The game's workspace, after its code: not in the file.
+SECTION Work, org = code_end, guard = screen, virtual = TRUE
+.sprite_blocks  SKIP 8 * 8      ; SPRITE's parameter blocks (the original's 24759)
 .frame_ula      SKIP 16         ; the palette VSync writes (irq.6502)
 .split_ula      SKIP 4 * SPLITS ; each split's four writes
 .cmaps          SKIP 6 * 8      ; the bands' colour maps (draw.6502)
 .row_map        SKIP 24
     ALIGN &100
 .attrs          SKIP 768        ; the Spectrum's attributes, as they would be
-\ The loading screen's four colours (provisional: tools/mkscreen.py picks
-\ them).
-.palette_phys
-    INCBIN "../build/data/title_pal.bin"
-.code_end
-    PRINT "code &1900-&", ~code_end
+.work_end
+    PRINT "code &0E00-&", ~code_end, ", workspace to &", ~work_end, " (", screen - work_end, " bytes free)"
 ENDSECTION

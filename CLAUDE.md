@@ -83,12 +83,19 @@ make venv       # .venv with SkoolKit and Pillow (needs uv)
   tools at build time (`tools/mkscreen.py`), never committed.
 - `make check` before every commit, and read its exit status (never pipe
   it into `tail`). `make check MODEL=Master` runs it on a Master 128.
-  Today it is `make draw`: every landscape screen and room the viewer
-  draws, byte for byte against the original's data through the colour
-  maps (decision 3).
-- The original's data is in a sideways RAM bank (`Data` in
-  `src/main.6502`, loaded as CAULDAT and copied by `find_bank`), paged
-  in for good.
+  `make draw` compares every scene the viewer draws, byte for byte,
+  with the original's own code drawing it (tools/zxscene.py).
+- Memory: CAULDRN loads at `&1900`; its loader puts CAULDAT (the
+  original's data, `Data` in `src/main.6502`) in a sideways RAM bank,
+  paged in for good, and TITLE in the screen, then copies the game down
+  to `&0E00`. The workspace follows the code (`Work`, virtual). Pages
+  4-12 hold the cells' scenery (decision 5, `draw.6502`).
+- The screen's lit pixels and the attribute shadow `attrs` are exactly
+  the original's at all times (the logic reads them: ATTR, POINT); only
+  colours are the port's (decisions 4 and 5). Every drawing routine
+  keeps that, and the checks prove it.
+- `make check` also runs `make sprites` (SPRITE against the original's
+  on random cases) and `make splits`.
 - `!BOOT` mustn't load into screen memory: the OS echoes `!BOOT`'s lines
   into MODE 7's screen at `&7C00`, inside ours. The game loads with OSFILE
   before it takes the machine.

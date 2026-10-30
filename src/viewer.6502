@@ -23,10 +23,16 @@ K_X     = &42
 .room
     LDA view_num : JSR underground_scene
 .done
+    LDA view_sprites : BEQ no_sprites
+    JSR view_demo
+.no_sprites
     JSR wait_released
 }
 .viewer_wait
 {
+    LDA test_n : BEQ no_test
+    JSR sprite_test
+.no_test
     JSR wait_vsync
     LDA view_kind : CMP view_shown : BNE redraw
     LDA view_num : CMP view_shown+1 : BNE redraw
@@ -64,3 +70,45 @@ K_X     = &42
     JSR any_key : BNE wait_released
     RTS
 }
+
+\ tools/spritecheck.mjs's calls: test_n blocks from test_calls, each drawn
+\ by SPRITE in turn, the blocks and ATTR_P, ATTR_T and MASK_T poked first.
+.sprite_test
+{
+    LDA #0 : STA test_i
+.call
+    LDX test_i : LDA test_calls,X : TAX
+    JSR sprite
+    INC test_i : LDA test_i : CMP test_n : BNE call
+    LDA #0 : STA test_n
+}
+.test_done                      ; (global: the tools run to here)
+    RTS
+.test_i     EQUB 0
+.test_calls SKIP 32
+
+\ Some sprites over the scene, as the original draws them (the checks
+\ turn them off: view_sprites): outdoors the witch low over the
+\ landscape and a bat, in mode 2 with ATTR_T BRIGHT cyan; underground
+\ the witch in mode 1 (an attribute no cell has) and a skeleton in mode
+\ 0, its own white on the cyan background.
+.view_demo
+{
+    LDX view_kind
+    LDA demo_attr_p,X : STA attr_p
+    LDA #69 : STA attr_t
+    LDA #0 : STA mask_t
+    TXA : ASL A : ASL A : ASL A : ASL A : TAY   ; 16 * the kind: two blocks
+    LDX #0
+.copy
+    LDA demo_blocks,Y : STA sprite_blocks + 8,X
+    INY : INX : CPX #16 : BNE copy
+    LDX #1 : JSR sprite
+    LDX #2 : JMP sprite
+}
+.demo_attr_p    EQUB 71, 5
+.demo_blocks
+    EQUW 54120 : EQUB 20, 44, 24, 3, 2, 67      ; the witch flying, over the trees
+    EQUW 53730 : EQUB 180, 130, 16, 3, 2, 67    ; a bat
+    EQUW 50800 : EQUB 120, 60, 24, 3, 1, 67     ; the witch on foot
+    EQUW 43590 : EQUB 60, 60, 24, 3, 0, 7       ; a skeleton

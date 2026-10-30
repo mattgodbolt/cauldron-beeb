@@ -33,9 +33,86 @@ NEXT
 .cell_at_done
     RTS
 
-\ Draw the glyph at `glyph` into the cell at cell_scr in ink_mask.
+\ --- What the scenery drew in each cell -----------------------------------
+\ SPRITE colours a pixel by whether the scenery has it lit (decision 5),
+\ so each cell keeps its scenery's glyph and colour: tables of 768, a
+\ cell's entry at the same offset as its attribute in attrs. They live in
+\ the OS's pages 4-12, free once the game owns the machine.
+CELL_GLYPH_LO = &0400
+CELL_GLYPH_HI = &0700
+CELL_HOME     = &0A00           ; the colour byte the cell's ink makes
+    ASSERT CELL_HOME + 768 <= &0D00 ; (page 13: the NMI, and BREAK reads it)
+ZA_AUTO2 cell_bg                ; cell_info's: the cell's scenery glyph
+
+\ cell_bg = the scenery's glyph in the cell at attr_ptr (cell_at's), and
+\ A = its colour byte.
+.cell_info
+{
+    ZA_AUTO2 tab
+    LDA attr_ptr : STA tab
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_GLYPH_LO) - HI(attrs) : STA tab+1
+    LDY #0 : LDA (tab),Y : STA cell_bg
+    LDA tab+1 : CLC : ADC #HI(CELL_GLYPH_HI - CELL_GLYPH_LO) : STA tab+1
+    LDA (tab),Y : STA cell_bg+1
+    LDA tab+1 : CLC : ADC #HI(CELL_HOME - CELL_GLYPH_HI) : STA tab+1
+    LDA (tab),Y
+    RTS
+}
+
+\ The cell at attr_ptr's scenery is the glyph at `glyph` in ink_mask.
+.note_cell
+{
+    ZA_AUTO2 tab
+    LDA attr_ptr : STA tab
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_GLYPH_LO) - HI(attrs) : STA tab+1
+    LDY #0 : LDA glyph : STA (tab),Y
+    LDA tab+1 : CLC : ADC #HI(CELL_GLYPH_HI - CELL_GLYPH_LO) : STA tab+1
+    LDA glyph+1 : STA (tab),Y
+    LDA tab+1 : CLC : ADC #HI(CELL_HOME - CELL_GLYPH_HI) : STA tab+1
+    LDA ink_mask : STA (tab),Y
+    RTS
+}
+    ASSERT LO(CELL_GLYPH_LO) = 0 AND LO(CELL_GLYPH_HI) = 0 AND LO(CELL_HOME) = 0
+
+\ Cells of rows A to 23 have no scenery: a blank glyph, colour 0.
+.clear_cells
+{
+    ZA_AUTO2 lo
+    ZA_AUTO2 hi
+    ZA_AUTO2 home
+    ZA_AUTO2 count                  ; cells left: 32 * (24 - the row)
+    PHA
+    LDX #0 : JSR attr_at
+    PLA : EOR #&FF : SEC : ADC #24  ; 24 - the row
+    LDX #0 : STX count+1
+    ASL A : ASL A : ASL A : ROL count+1 : ASL A : ROL count+1 : ASL A : ROL count+1
+    STA count
+    LDA attr_ptr : STA lo : STA hi : STA home
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_GLYPH_LO) - HI(attrs) : STA lo+1
+    CLC : ADC #HI(CELL_GLYPH_HI - CELL_GLYPH_LO) : STA hi+1
+    CLC : ADC #HI(CELL_HOME - CELL_GLYPH_HI) : STA home+1
+    LDY #0
+.cell
+    LDA #LO(blank_glyph) : STA (lo),Y
+    LDA #HI(blank_glyph) : STA (hi),Y
+    LDA #0 : STA (home),Y
+    INY : BNE same
+    INC lo+1 : INC hi+1 : INC home+1
+.same
+    LDA count : BNE dec_lo
+    DEC count+1
+.dec_lo
+    DEC count
+    LDA count : ORA count+1 : BNE cell
+    RTS
+}
+.blank_glyph    EQUB 0, 0, 0, 0, 0, 0, 0, 0
+
+\ Draw the glyph at `glyph` into the cell at cell_scr in ink_mask, as the
+\ cell's scenery (attr_ptr, from cell_at, the cell's).
 .draw_cell
 {
+    JSR note_cell
     ZA_AUTO2 right              ; the right half: cell_scr + 8
     LDA cell_scr : ORA #8 : STA right
     LDA cell_scr+1 : STA right+1
@@ -50,9 +127,10 @@ NEXT
     RTS
 }
 
-\ Clear screen rows A to 23 to logical colour 0.
+\ Clear screen rows A to 23 to logical colour 0, and their cells' scenery.
 .clear_rows
 {
+    PHA : JSR clear_cells : PLA
     ASL A : ADC #HI(screen) : STA page+2
     LDY #0 : TYA
 .loop

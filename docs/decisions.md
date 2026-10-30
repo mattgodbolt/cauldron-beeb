@@ -102,3 +102,43 @@ clean from 88 to 116 on the B and the Master, parked at 102 in the middle.
 
 Still open (D6 in `docs/brief.md`): the enemies' own colours underground
 (white, red, green) in rooms that already have two inks besides cyan.
+
+## 5. No colour clash (Matt, 2026-10-30)
+
+The original's SPRITE recolours every cell a sprite covers: outdoors the
+witch turns a tree's cells cyan, underground an enemy takes over the
+background cells it crosses (`graphics.md`). Matt prefers the port
+without the clash.
+
+The game logic reads both things the clash touches, so neither can
+simply go:
+
+- **The attributes.** The logic tests them (the grass's 65 under a
+  landing, 27424). The port keeps the Spectrum's attribute file as a
+  shadow (`attrs`), and SPRITE changes it by its modes exactly as the
+  original does; it just no longer colours anything.
+- **The lit pixels.** The logic's POINT reads them (the trees beside the
+  witch, 27498). The port's SPRITE XORs exactly the original's pixels,
+  so lit and unlit are the original's everywhere.
+
+Only the colour of a lit pixel is the port's own. Each cell remembers
+the glyph and colour its scenery drew there (pages 4-12, `draw.6502`);
+when SPRITE's XOR lights a pixel, it takes the scenery's colour if the
+scenery has it lit (a pixel coming back from under a sprite), the
+sprite's own colour if not; a lit pixel the XOR leaves lit keeps its
+colour, and one it clears goes black. A sprite's own colour is the ink
+its mode would have given the cell (the block's attribute in mode 0,
+ATTR_P in mode 1, ATTR_T in mode 2), through its row's band (decision 4).
+So the witch is cyan over a tree, the tree stays green around her, and
+where they overlap the XOR leaves a hole, as on the Spectrum.
+
+`make sprites` checks it: random calls of SPRITE on the original's
+scenes (graphics, places, modes, rows past column 31, draws and erases)
+run on the original and on the port. The attributes must be the
+original's; the pixels follow a model of SPRITE's XOR through the
+Spectrum's own screen addresses, which must leave exactly the original's
+lit pixels, coloured by the rule above.
+
+What it can get wrong: where two sprites overlap and one is erased, the
+other's pixels that come back take the erasing call's colour (outdoors,
+the erase's ATTR_T is white).

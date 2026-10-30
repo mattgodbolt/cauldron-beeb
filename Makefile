@@ -9,6 +9,8 @@
 #                 room the BBC draws, byte for byte against the original's
 #                 own drawing of them (tools/drawcheck.mjs, tools/drawcmp.py,
 #                 tools/zxscene.py), attributes too
+#   make sprites  SPRITE on random cases against the original's
+#                 (tools/spritecases.py, tools/spritecheck.mjs)
 #   make splits   the palette splits' timing, the panel's rows checked in a
 #                 screenshot (tools/splitsweep.py, decision 4)
 #   make disc     rebuild from a clean tree and copy the disc to
@@ -39,7 +41,7 @@ GENERATED = build/data/title.bin build/data/landmap.bin
 BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run check draw splits disc fetch zx disasm venv clean
+.PHONY: all run check draw sprites splits disc fetch zx disasm venv clean
 
 all: $(TARGET)
 
@@ -50,7 +52,17 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
 
-check: draw splits
+check: draw sprites splits
+
+# SPRITE against the original's on random cases (tools/spritecases.py:
+# the attributes exactly, the pixels by decision 5's model of it).
+sprites: $(TARGET) build/sprite/seed1.json
+	node tools/spritecheck.mjs
+	$(PYTHON) tools/spritecases.py cmp
+
+build/sprite/seed1.json: build/cauldron.z80 tools/spritecases.py
+	$(PYTHON) tools/spritecases.py gen --count 100 --seed 1
+	cp build/sprite/cases.json $@
 
 # The palette splits where the build puts them (decision 4): the panel's
 # rows in their colours, no pixel wrong.

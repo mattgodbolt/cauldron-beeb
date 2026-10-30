@@ -159,3 +159,33 @@ ULA writes) where nothing beside it shows that colour. The interrupt
 takes a table of splits; `tools/splitsweep.py` builds with each timing
 and counts wrong pixels in a screenshot's panel rows: clean from 88 to
 116 on both machines, parked at 102.
+
+### SPRITE, and no clash
+
+SPRITE (25431) first went in with the original's clash: when a cell's
+attribute changed, its lit pixels were recoloured, which kept the BBC's
+screen the Spectrum's with its colours mapped. Matt preferred no clash
+(decision 5), so it changed before anything was built on it: the
+attributes are still kept exactly, and the lit pixels, but a pixel's
+colour comes from whether the scenery has it lit (each cell's glyph and
+colour, noted as the scenery draws it).
+
+`make sprites` (tools/spritecases.py, tools/spritecheck.mjs) runs random
+calls on both machines: 300 cases, 309 calls of them past column 31,
+all match. The bugs it found: a region table built with comparisons
+(baron's TRUE isn't 1); CAULDAT loading over the code once the sprites
+grew it; the wrap past column 31, which carries into the next character
+row of the third and from a third's last row into the pixel line; a
+carry left set between pointer additions, which left the last scene's
+colours in the cell tables (it showed only when one case followed
+another: the cases had been run alone first).
+
+The code outgrew `&1900-&5000` with the sprites in it, so CAULDRN is now
+CE2's shape: the game assembled at `&0E00`, loaded at `&1900` with a
+loader after it that puts CAULDAT in the bank and TITLE in the screen and
+then copies the game down over the DFS's workspace. The workspace
+(`attrs` and the tables) comes after the code and isn't in the file.
+
+Memory will be the next constraint: the logic's code and its tables are
+still to come, beside the 1-bit graphics in main RAM and a nearly full
+sideways bank. The memory map wants planning before the hag.

@@ -30,6 +30,9 @@ and the colour (decisions 3 and 4), from tools/colourstudy.py's counts:
                    BBC physical colours of logical 1 and 3 (logical 2 is
                    always cyan, the sprites' colour: decision 4)
     roompal.bin    the same for each room
+    sprites.bin    the sprite graphics' regions (SPRITE_REGIONS), one after
+                   another: SPRITE takes the original's addresses, and
+                   src/sprite.6502 finds each in its region
     bandmaps.bin   the fixed bands' maps, 8 bytes each: the panel's rows
                    0-3, then the sky (decision 4's split layout)
 """
@@ -42,6 +45,10 @@ from colourstudy import best3, ink_counts, land_cells, room_cells  # noqa: E402
 from zxgfx import LAND_COLS, LAND_MAP, LAND_SCREENS, ROOMS, BLOCKS, load  # noqa: E402
 
 UNDER_GLYPHS = 59330
+# The sprite graphics (docs/research/data.md), as (first, last + 1): the
+# shots; the skeleton and its set; the witch on foot to the pumpkins
+# (the code among them comes along); the last set.
+SPRITE_REGIONS = [(42450, 42498), (43590, 45318), (50800, 55560), (60100, 60340)]
 PANEL_GLYPHS = 56130
 SCENERY, SCENERY_END = 55641, 56097
 LAND_FONTS = 64000
@@ -118,6 +125,7 @@ def main():
     write("underfont.bin", m[UNDER_GLYPHS:UNDER_GLYPHS + 8 * 96])
     write("panelfont.bin", m[PANEL_GLYPHS:PANEL_GLYPHS + 8 * 96])
     write("scenery.bin", m[SCENERY:SCENERY_END])
+    write("sprites.bin", [b for a, e in SPRITE_REGIONS for b in m[a:e]])
     write("bandmaps.bin", [b for band in PANEL_ROWS + [SKY] for b in nearest_map(band)])
     for name, units in (("landpal.bin", [land_cells(m, k) for k in range(LAND_SCREENS)]),
                         ("roompal.bin", [room_cells(m, r) for r in range(64)])):
