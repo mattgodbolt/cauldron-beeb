@@ -1,0 +1,116 @@
+\ ***************************************************************************
+\ The underground rooms, as the original's 45710 draws them
+\ (docs/research/graphics.md): 5 rows of 8 blocks of 4 x 4 characters
+\ from character row 3, over a cleared background. A block is 4 rows of
+\ two (inks, character, character): the first character in the inks'
+\ high nibble, the second in bits 0-2. Character 32 is left as background.
+\ ***************************************************************************
+
+ROOM_ROW = 3                    ; the first row of blocks' character row
+
+ZA_AUTO2 room_types             ; the room's 40 block types
+ZA_AUTO2 room_block             ; a block's 24 bytes
+ZA_AUTO1 room_row               ; the cell being drawn
+ZA_AUTO1 room_col
+
+\ Draw room A (0-63), clearing rows 4-23 first, and set its palette.
+.draw_room
+{
+    ZA_AUTO1 bi                 ; 0-39: which block
+    TAX
+    LDA room_lo,X : STA room_types
+    LDA room_hi,X : STA room_types+1
+    \ The colour map (8 bytes a room) and palette (4 after all the maps).
+    TXA : ASL A : ASL A : ASL A : STA room_cmap+1   ; (8 * 63 < 512: the carry)
+    LDA #HI(roompal) : ADC #0 : STA room_cmap+2
+    ASSERT LO(roompal) = 0
+    TXA : ASL A : ASL A : STA pal_src               ; (4 * 63 < 256)
+    LDA #HI(roompal + 8 * 64) : STA pal_src+1
+    ASSERT LO(roompal + 8 * 64) = 0
+    JSR palette_from
+    LDA #ROOM_ROW + 1 : JSR clear_rows
+    LDA #0 : STA bi
+.next_block
+    LDY bi : LDA (room_types),Y : BEQ skip
+    TAX
+    LDA block_lo,X : STA room_block
+    LDA block_hi,X : STA room_block+1
+    \ The block's top-left cell: row 3 + 4 * (bi DIV 8), column 4 * (bi MOD 8).
+    LDA bi : AND #&F8 : LSR A : ADC #ROOM_ROW : STA room_row
+    LDA bi : AND #7 : ASL A : ASL A : STA room_col
+    JSR draw_block
+.skip
+    INC bi : LDA bi : CMP #40 : BNE next_block
+    RTS
+}
+
+\ Draw the block at room_block with its top-left cell at room_row,
+\ room_col (both left as they were).
+.draw_block
+{
+    ZA_AUTO1 bo                 ; the offset in the block, 0-23
+    ZA_AUTO1 inks
+    LDA #0 : STA bo
+.triple
+    LDY bo : LDA (room_block),Y : STA inks
+    INY : LDA (room_block),Y
+    LDX inks : JSR ink_hi : JSR room_char
+    INC room_col
+    LDY bo : INY : INY : LDA (room_block),Y
+    LDX inks : JSR room_char
+    INC room_col
+    LDA bo : CLC : ADC #3 : STA bo
+    LDA room_col : AND #3 : BNE triple  ; (a row of the block: two triples)
+    \ The block's next row.
+    LDA room_col : SEC : SBC #4 : STA room_col
+    INC room_row
+    LDA bo : CMP #24 : BCC triple
+    LDA room_row : SEC : SBC #4 : STA room_row
+    RTS
+}
+
+\ X = the high nibble of X (the first character's ink). A is kept.
+.ink_hi
+    PHA
+    TXA : LSR A : LSR A : LSR A : LSR A : TAX
+    PLA
+    RTS
+
+\ Draw underground character A in Spectrum ink X (bits 0-2) at room_row,
+\ room_col: character 32 is left as background.
+.room_char
+    CMP #32 : BEQ room_char_done
+    PHA
+    TXA : AND #7 : TAX
+.room_cmap
+    LDA roompal,X : TAX             ; (its address patched in by draw_room)
+    LDA colour_bytes,X : STA ink_mask
+    PLA
+    \ glyph = underfont + 8 * the character - 256
+    LDX #0 : STX glyph+1
+    ASL A : ROL glyph+1 : ASL A : ROL glyph+1 : ASL A : ROL glyph+1
+    CLC : ADC #LO(underfont - 256) : STA glyph
+    LDA glyph+1 : ADC #HI(underfont - 256) : STA glyph+1
+    LDA room_row : LDX room_col : JSR cell_at
+    JMP draw_cell
+.room_char_done
+    RTS
+
+\ Each room's 40 block types, rooms + 40 * the room.
+.room_lo
+FOR i = 0..63
+    EQUB LO(rooms + 40 * i)
+NEXT
+.room_hi
+FOR i = 0..63
+    EQUB HI(rooms + 40 * i)
+NEXT
+\ Each block type's 24 bytes, blocks + 24 * the type.
+.block_lo
+FOR i = 0..74
+    EQUB LO(blocks + 24 * i)
+NEXT
+.block_hi
+FOR i = 0..74
+    EQUB HI(blocks + 24 * i)
+NEXT

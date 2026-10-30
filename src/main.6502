@@ -1,10 +1,11 @@
 \ ***************************************************************************
 \ CAULDRON for the BBC Micro - build file
 \
-\ The screen layer for now: !BOOT runs CAULDRN, which loads TITLE (the
+\ The screen and drawing layers for now: !BOOT runs CAULDRN, which loads TITLE (the
 \ Spectrum's loading screen, converted by tools/mkscreen.py) straight into
 \ screen memory, takes the machine over and shows it in the Spectrum's
-\ geometry. (CAULDRN loads it, not !BOOT: the OS echoes !BOOT's lines into
+\ geometry; a key goes on to the viewer (viewer.6502), which draws the
+\ landscape's screens and the rooms. (CAULDRN loads it, not !BOOT: the OS echoes !BOOT's lines into
 \ MODE 7's screen, which is inside ours.)
 \ ***************************************************************************
 
@@ -22,7 +23,10 @@ ENDIF
 \ The game's permanent zero page, below the allocator's pool.
 ZP_FIXED = &70
 vsyncs      = ZP_FIXED + 0      ; VSyncs so far (irq.6502)
-ZP_END      = ZP_FIXED + 1
+view_kind   = ZP_FIXED + 1      ; the viewer's: 0 landscape, 1 rooms
+view_num    = ZP_FIXED + 2      ; ... which one
+view_shown  = ZP_FIXED + 3      ; ... and the kind and number drawn (2 bytes)
+ZP_END      = ZP_FIXED + 5
     ASSERT ZP_END <= &90        ; (&90-&9F: Econet, &A0-: the OS's NMI and beyond)
 
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
@@ -35,12 +39,32 @@ SECTION Title, org = screen, load = &FFFF0000 OR screen, exec = &FFFF0000 OR scr
     ASSERT P% = &8000
 ENDSECTION
 
+\ The original's data (tools/mkdata.py, build/data), for the sideways
+\ RAM bank: CAULDRN loads it at &3000 and copies it to the first free bank
+\ (find_bank), which stays paged in.
+SECTION Data, org = &8000, load = &FFFF3000, exec = &FFFF3000, filename = "CAULDAT", guard = &C000
+\ The original's data (tools/mkdata.py, build/data): page-aligned where
+\ the drawing adds an offset to a page: roompal first.
+.roompal    INCBIN "../build/data/roompal.bin"
+.landpal    INCBIN "../build/data/landpal.bin"
+.landfont   INCBIN "../build/data/landfont.bin"
+.landcols   INCBIN "../build/data/landcols.bin"
+.landmap    INCBIN "../build/data/landmap.bin"
+.blocks     INCBIN "../build/data/blocks.bin"
+.rooms      INCBIN "../build/data/rooms.bin"
+.underfont  INCBIN "../build/data/underfont.bin"
+.data_end
+    PRINT "sideways data &8000-&", ~data_end
+    ASSERT &3000 + data_end - &8000 <= &7C00    ; (loaded at &3000, below MODE 7's screen)
+ENDSECTION
+
 SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename = "CAULDRN", guard = screen
     ZA_POOL &00..ZP_FIXED-1
 
 .start
 {
     ZA_ENTRY
+    JSR find_bank
     LDX #LO(title_block) : LDY #HI(title_block)
     LDA #&FF : JSR osfile           ; load TITLE at its own address
     SEI
@@ -51,7 +75,50 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
 }
 .shown                              ; (global: the tools run to here)
-    JMP shown
+    JSR any_key : BEQ shown
+    JMP viewer
+
+\ CAULDAT into the highest free sideways RAM bank: no ROM found there at
+\ start-up, and a byte at &8000 can be flipped. It stays paged in for good
+\ (romshad is the OS's copy of romsel: it puts that back after paging
+\ ROMs itself, so write both). With none, say so and stop.
+.find_bank
+{
+    ZA_AUTO2 src
+    ZA_AUTO2 dst
+    LDX #LO(load_data) : LDY #HI(load_data) : JSR oscli
+    SEI
+    LDX #15
+.free
+    LDA romtypes,X : BNE not_free
+    STX romsel
+    LDA &8000 : EOR #&FF : STA &8000
+    CMP &8000 : BEQ found
+.not_free
+    DEX : BPL free
+    LDA romshad : STA romsel
+    CLI
+    LDX #0
+.say
+    LDA no_ram,X : JSR osasci
+    INX : CPX #no_ram_end - no_ram : BNE say
+.stop
+    JMP stop
+.found
+    STX romshad
+    LDA #&30 : STA src+1 : LDA #&80 : STA dst+1
+    LDY #0 : STY src : STY dst
+.copy
+    LDA (src),Y : STA (dst),Y
+    INY : BNE copy
+    INC src+1 : INC dst+1
+    LDA dst+1 : CMP #HI(data_end - 1) + 1 : BNE copy
+    CLI
+    RTS
+}
+.load_data  EQUS "LOAD CAULDAT 3000", 13
+.no_ram     EQUS "Cauldron needs 16K of sideways RAM", 13
+.no_ram_end
 
 \ OSFILE's block for loading TITLE where it was saved.
 .title_block
@@ -64,6 +131,11 @@ SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename 
     INCLUDE "system.6502"
     INCLUDE "irq.6502"
     INCLUDE "screen.6502"
+    INCLUDE "draw.6502"
+    INCLUDE "land.6502"
+    INCLUDE "room.6502"
+    INCLUDE "viewer.6502"
+
 
 .palette_ula    SKIP 16
 \ The loading screen's four colours (provisional: tools/mkscreen.py picks

@@ -3,6 +3,11 @@
 #   make          assemble build/cauldron.ssd (+ build/cauldron.json, the
 #                 symbols, and build/listing.txt)
 #   make run      boot it in jsbeeb, screenshot to shots/run.png
+#   make check    every check: make draw (MODEL=Master to run them on a
+#                 Master 128; default B-DFS1.2)
+#   make draw     every landscape screen and room the BBC draws, byte for
+#                 byte against the original's (tools/drawcheck.mjs,
+#                 tools/drawcmp.py)
 #   make disc     rebuild from a clean tree and copy the disc to
 #                 cauldron.ssd, which the README links
 #   make fetch    download the Spectrum original into original/
@@ -10,6 +15,8 @@
 #                 at the game's entry (24600, after the loader's PAUSE)
 #   make disasm   the original's disassembly with the research's labels,
 #                 build/cauldron.skool (from disasm/*.ctl)
+#   make bas      the compiled BASIC decompiled to build/cauldron.bas
+#                 (tools/decompile.py; execution maps in build/maps/*.txt)
 #   make venv     the Python tools' environment (.venv with SkoolKit, Pillow)
 
 PYTHON  ?= .venv/bin/python
@@ -23,13 +30,13 @@ TARGET   = build/cauldron.ssd
 DISC     = cauldron.ssd
 SOURCES  = $(wildcard src/*.6502)
 # Made from the original by the tools, never committed (original/README.md).
-GENERATED = build/data/title.bin
+GENERATED = build/data/title.bin build/data/landmap.bin
 # Stamped into !BOOT, so a disc says what it is: UTC build time and the
 # commit, with + if the tree had changes.
 BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all run disc fetch zx disasm venv clean
+.PHONY: all run check draw disc fetch zx disasm venv clean
 
 all: $(TARGET)
 
@@ -40,12 +47,22 @@ $(TARGET): $(SOURCES) $(GENERATED) | build
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
 
+check: draw
+
+draw: $(TARGET) build/cauldron.z80
+	node tools/drawcheck.mjs
+	$(PYTHON) tools/drawcmp.py
+
 # Always from a clean tree, so the stamp names the commit the disc holds.
 disc:
 	@git diff --quiet HEAD -- . ':(exclude)$(DISC)' || { echo "commit first: the stamp would say +"; exit 1; }
 	rm -f $(TARGET)
 	$(MAKE) $(TARGET)
 	cp $(TARGET) $(DISC)
+
+# The original's tables and the colour maps (decision 3).
+build/data/landmap.bin: build/cauldron.z80 tools/mkdata.py tools/colourstudy.py tools/zxgfx.py
+	$(PYTHON) tools/mkdata.py
 
 run: $(TARGET)
 	node tools/play.mjs 'f5,!run' shots/ --disc $(TARGET) --until shown
@@ -70,6 +87,12 @@ build/cauldron.skool: build/cauldron.z80 $(wildcard disasm/*.ctl)
 	rm -rf build/ctl && mkdir -p build/ctl
 	for f in disasm/*.ctl; do grep -v '^i' $$f > build/ctl/$$(basename $$f); done
 	.venv/bin/sna2skool.py -H -c build/ctl build/cauldron.z80 > $@
+
+bas: build/cauldron.bas
+
+# The listing marks statements no map in build/maps ran (tools/zx.py --map).
+build/cauldron.bas: build/cauldron.z80 tools/decompile.py tools/decompile_names.py $(wildcard build/maps/*.txt)
+	$(PYTHON) tools/decompile.py $(addprefix --map ,$(wildcard build/maps/*.txt))
 
 original/Cauldron.tap:
 	tools/fetch_original.sh

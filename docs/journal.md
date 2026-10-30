@@ -108,3 +108,32 @@ the port must copy; `docs/research/logic-outline.md` maps the program.
 Execution maps for the listing's "never ran" marks were made by driving
 the original with pokes (teleporting to doors with all keys held); they
 live in `build/maps/`.
+
+### Colour, counted
+
+`tools/colourstudy.py` counts the lit pixels of each ink in the
+landscape's columns and the rooms' blocks. One palette of three inks per
+landscape screen keeps 99.33% of them in their own colour, and per room
+all of them; MODE 2 would keep every colour but halve 13% and 17% of lit
+pixels' pairs. Decisions 2 and 3 (provisional): MODE 1, a palette per
+band, chosen per screen and per room.
+
+### The data in sideways RAM, and the drawing
+
+`tools/mkdata.py` writes the original's tables (the landscape's fonts,
+columns and map; the blocks, rooms and underground font) and decision
+3's colour maps into `build/data/`. They outgrew `&1900-&5000` beside
+the code at once, so the sideways RAM loader came early: CAULDRN loads
+CAULDAT at `&3000`, copies it to the highest free bank, which stays
+paged in, and says so and stops if there is none.
+
+`src/land.6502` and `src/room.6502` draw a landscape screen and a room
+from the 1-bit data, expanding each glyph into its logical colour as it
+goes (`src/draw.6502`). The viewer (`src/viewer.6502`, after the title)
+steps through them. `make draw` runs `tools/drawcheck.mjs`, which has
+the viewer draw all 61 screens and 64 rooms and dumps them, and
+`tools/drawcmp.py`, which draws the same from `tools/zxgfx.py`'s readers
+(proven against the original's own drawing) through the same colour
+maps and compares bytes and palettes. Two bugs on the way: a jump into
+the middle of an instruction (`viewer + 3`), and the offset of screens
+32 on losing a carry. All match on the B and the Master.

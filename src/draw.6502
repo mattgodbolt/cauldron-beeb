@@ -1,0 +1,74 @@
+\ ***************************************************************************
+\ Drawing the original's 1-bit characters into MODE 1 cells.
+\
+\ A Spectrum cell (8 x 8) is 16 bytes: its left four pixels' 8 lines,
+\ then its right four's. Paper is black everywhere in the original
+\ (docs/research/graphics.md), so a cell is its glyph in one logical
+\ colour on logical 0. Cell (row r, column c) is at screen + 512r + 16c.
+\ ***************************************************************************
+
+ZA_AUTO2 glyph                  ; the character's 8 bytes
+ZA_AUTO2 cell_scr               ; the cell's screen address
+ZA_AUTO1 ink_mask               ; cbyte(the logical colour)
+
+\ A Spectrum nibble (its leftmost pixel in bit 3) spread into both halves
+\ of a MODE 1 byte, where a pixel's colour bits are 4 apart.
+.spread
+FOR n = 0..15
+    EQUB n * &11
+NEXT
+
+\ cbyte of logical colour 0-3.
+.colour_bytes
+    EQUB cbyte(0), cbyte(1), cbyte(2), cbyte(3)
+
+\ cell_scr = the screen address of row A, column X.
+.cell_at
+    ASL A : ADC #HI(screen) : STA cell_scr+1    ; (A < 24: no carry in)
+    ASSERT LO(screen) = 0
+    TXA : ASL A : ASL A : ASL A : ASL A : STA cell_scr
+    BCC cell_at_done : INC cell_scr+1
+.cell_at_done
+    RTS
+
+\ Draw the glyph at `glyph` into the cell at cell_scr in ink_mask.
+.draw_cell
+{
+    ZA_AUTO2 right              ; the right half: cell_scr + 8
+    LDA cell_scr : ORA #8 : STA right
+    LDA cell_scr+1 : STA right+1
+    LDY #7
+.line
+    LDA (glyph),Y
+    LSR A : LSR A : LSR A : LSR A : TAX
+    LDA spread,X : AND ink_mask : STA (cell_scr),Y
+    LDA (glyph),Y : AND #15 : TAX
+    LDA spread,X : AND ink_mask : STA (right),Y
+    DEY : BPL line
+    RTS
+}
+
+\ Clear screen rows A to 23 to logical colour 0.
+.clear_rows
+{
+    ASL A : ADC #HI(screen) : STA page+2
+    LDY #0 : TYA
+.loop
+.page
+    STA screen,Y
+    INY : BNE loop
+    INC page+2 : BPL loop           ; (to the top of main RAM, &8000)
+    ASSERT screen + SCREEN_ROWS * ROW_BYTES = &8000
+    RTS
+}
+
+\ Set the palette from the 4 physical colours at (pal_src): logical 0-3.
+ZA_AUTO2 pal_src
+.palette_from
+{
+    LDY #3
+.copy
+    LDA (pal_src),Y : STA palette_phys,Y
+    DEY : BPL copy
+    JMP set_palette
+}

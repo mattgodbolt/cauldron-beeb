@@ -1,0 +1,89 @@
+\ ***************************************************************************
+\ The landscape: rows 16-22 outdoors, 32 columns each printed from the
+\ column table by the original's 57130 (docs/research/graphics.md). A
+\ column id (1-255) is seven (ink, character) pairs, from font A below
+\ id 216 and font B from it.
+\ ***************************************************************************
+
+LAND_ROW   = 16                 ; the landscape's first character row
+LAND_ROWS  = 7
+LAND_SCREENS = 61
+LAND_FONT_B = 216               ; the first column id in font B
+
+ZA_AUTO2 land_col               ; the column id's record
+
+\ Draw landscape screen A (0-60) into rows 16-22, and set its palette.
+.draw_land_screen
+{
+    ZA_AUTO2 ids                ; landmap + 32 * the screen
+    ZA_AUTO1 col
+    ZA_AUTO1 row
+    \ The colour map: landpal + 8 * the screen (patched into cmap_lo).
+    PHA
+    LDX #0 : STX ids+1
+    ASL A : ASL A : ASL A : ROL ids+1   ; (8 * 60 < 512; 4 * 60 < 256)
+    CLC : ADC #LO(landpal) : STA cmap_lo+1
+    LDA ids+1 : ADC #HI(landpal) : STA cmap_lo+2
+    PLA : PHA
+    \ ids = landmap + 32 * the screen (up to 11 bits: every shift's carry)
+    LDX #0 : STX ids+1
+    ASL A : ASL A : ASL A : ROL ids+1 : ASL A : ROL ids+1 : ASL A : ROL ids+1
+    ADC #LO(landmap) : STA ids
+    LDA ids+1 : ADC #HI(landmap) : STA ids+1
+    \ The palette: 4 bytes a screen after the colour maps.
+    PLA
+    LDX #0 : STX pal_src+1
+    ASL A : ASL A : ROL pal_src+1
+    ADC #LO(landpal + 8 * LAND_SCREENS) : STA pal_src
+    LDA pal_src+1 : ADC #HI(landpal + 8 * LAND_SCREENS) : STA pal_src+1
+    JSR palette_from
+    LDA #0 : STA col
+.column
+    LDY col : LDA (ids),Y : TAY
+    LDA landcol_lo,Y : STA land_col
+    LDA landcol_hi,Y : STA land_col+1
+    \ The font: A below LAND_FONT_B, B from it (font_base patched in).
+    LDX #0
+    CPY #LAND_FONT_B : BCC fa
+    INX
+.fa LDA land_font_lo,X : STA font_add+1
+    LDA land_font_hi,X : STA font_hi_add+1
+    LDA #0 : STA row
+.cell
+    LDA row : ASL A : TAY
+    LDA (land_col),Y : AND #7 : TAX     ; the ink
+.cmap_lo
+    LDA landpal,X : TAX
+    LDA colour_bytes,X : STA ink_mask
+    INY : LDA (land_col),Y              ; the character
+    LDX #0 : STX glyph+1
+    ASL A : ROL glyph+1 : ASL A : ROL glyph+1 : ASL A : ROL glyph+1
+    CLC
+.font_add
+    ADC #0 : STA glyph
+    LDA glyph+1
+.font_hi_add
+    ADC #0 : STA glyph+1
+    LDA row : CLC : ADC #LAND_ROW
+    LDX col : JSR cell_at
+    JSR draw_cell
+    INC row : LDA row : CMP #LAND_ROWS : BNE cell
+    INC col : LDA col : CMP #32 : BNE column
+    RTS
+}
+
+\ Glyph c of font A is at landfont + 8c - 256, of font B at + 8c + 512.
+.land_font_lo
+    EQUB LO(landfont - 256), LO(landfont + 512)
+.land_font_hi
+    EQUB HI(landfont - 256), HI(landfont + 512)
+
+\ Each column id's record, landcols + 14 * (id - 1).
+.landcol_lo
+FOR i = 0..255
+    EQUB LO(landcols + 14 * (i - 1))
+NEXT
+.landcol_hi
+FOR i = 0..255
+    EQUB HI(landcols + 14 * (i - 1))
+NEXT

@@ -1,0 +1,65 @@
+\ ***************************************************************************
+\ The viewer: the drawing layer on show, not the game. Z and X step
+\ through the landscape's screens or the rooms, SPACE switches between
+\ them. tools/drawcheck.mjs pokes view_kind and view_num instead and runs
+\ to viewer_wait, where view_shown says what is drawn.
+\ ***************************************************************************
+
+K_SPACE = &62
+K_Z     = &61
+K_X     = &42
+
+.viewer
+    LDA #0 : STA view_kind : STA view_num
+.viewer_draw
+{
+    LDA view_kind : STA view_shown
+    LDA view_num : STA view_shown+1
+    LDA #0 : JSR clear_rows
+    LDA view_kind : BNE room
+    LDA view_num : JSR draw_land_screen
+    JMP done
+.room
+    LDA view_num : JSR draw_room
+.done
+    JSR wait_released
+}
+.viewer_wait
+{
+    JSR wait_vsync
+    LDA view_kind : CMP view_shown : BNE redraw
+    LDA view_num : CMP view_shown+1 : BNE redraw
+    LDX #K_X : JSR key_down : BNE next
+    LDX #K_Z : JSR key_down : BNE prev
+    LDX #K_SPACE : JSR key_down : BNE kind
+    JMP viewer_wait
+.next
+    INC view_num
+    JSR view_count : CMP view_num : BNE redraw
+    LDA #0 : STA view_num
+.redraw
+    JMP viewer_draw
+.prev
+    DEC view_num : BPL redraw
+    JSR view_count : SEC : SBC #1 : STA view_num
+    JMP viewer_draw
+.kind
+    LDA view_kind : EOR #1 : STA view_kind
+    LDA #0 : STA view_num
+    JMP viewer_draw
+}
+
+\ A = how many of view_kind's things there are.
+.view_count
+    LDA view_kind : BNE rooms_n
+    LDA #LAND_SCREENS : RTS
+.rooms_n
+    LDA #64 : RTS
+
+\ Wait until no key is down (the viewer steps once a press).
+.wait_released
+{
+    JSR wait_vsync
+    JSR any_key : BNE wait_released
+    RTS
+}
