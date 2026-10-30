@@ -169,7 +169,8 @@ original's is. The menu's click is a short tone.
 
 ## 9. Controls (Matt, 2026-10-30)
 
-The original reads Kempston, Sinclair II or the keys CAPS SHIFT to V.
-The port's keys are Z, X, :, / and RETURN by default (which does what is
-set when the controls are transcribed), redefinable, and an analogue
-joystick.
+The original reads Kempston, Sinclair II or the keys CAPS SHIFT to V
+(left, right, up, down, fire). The port's are the usual BBC ones (Matt):
+**Z** left, **X** right, **:** up, **/** down, **RETURN** fire, as CE2's
+are (in jsbeeb on a PC keyboard, : is the ' key); redefinable, and an
+analogue joystick.
