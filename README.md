@@ -7,9 +7,13 @@ the Master 128, from one disc.
 **[Run it in jsbeeb](https://bbc.xania.org/?autoboot&disc1=github:mattgodbolt/cauldron-beeb/cauldron.ssd)**
 ([on a Master](https://bbc.xania.org/?autoboot&model=Master&disc1=github:mattgodbolt/cauldron-beeb/cauldron.ssd))
 
-It is early days. The disc shows only the first step of the screen
-layer: the Spectrum's loading screen in the Spectrum's 256 x 192
-geometry, in MODE 1's four colours. There is no game on it yet.
+It is early days, and there is no game on the disc yet. It shows the
+Spectrum's loading screen in the Spectrum's 256 x 192 geometry, then on
+a key the drawing layer: **Z** and **X** step through the landscape's 61
+screens, **SPACE** switches to the 64 underground rooms. Each is drawn
+from the original's data in MODE 1, with a palette chosen per screen
+and per room, and checked byte for byte against the original's own
+drawing. It needs sideways RAM (a Model B with 16K, or a Master).
 
 This is an unofficial port. *Cauldron* was designed by Steve Brown; the
 Spectrum version, which this port is made from, is by Ramjam (Tony
