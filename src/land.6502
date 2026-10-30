@@ -13,8 +13,10 @@ LAND_MAP   = 57310              ; the original's map: tools/mkdata.py's landmap.
 LAND_ATTR  = &40                ; the landscape's attributes: BRIGHT, black paper
 
 ZA_AUTO2 land_col               ; the column id's record
+IF DEFINED(VIEWER)
 ZA_AUTO2 land_ids               ; the 32 column ids being drawn
 ZA_AUTO1 land_screen            ; ... in the colours of this screen
+ENDIF
 
 IF DEFINED(VIEWER)
 \ Draw landscape screen A (0-60) into rows 16-22, and set the lower band's
@@ -31,48 +33,32 @@ IF DEFINED(VIEWER)
 }
 ENDIF
 
-IF NOT(DEFINED(VIEWER))
-\ 57228 (USR): the 32 columns whose ids start at the original's map
-\ address PRBUFF (a word), in the colours of the screen that holds the
-\ most of them.
-.usr_land
+\ The lower band's colours, landscape screen A's (decision 3).
+.land_colours
 {
-    SEC
-    LDA prbuf : SBC #LO(LAND_MAP) : STA land_ids
-    LDA prbuf+1 : SBC #HI(LAND_MAP) : STA land_ids+1
-    \ The screen: (offset + 16) DIV 32, the map's tail (its first
-    \ screens again, for the wrap) as those.
-    LDA land_ids : CLC : ADC #16 : STA land_screen
-    LDA land_ids+1 : ADC #0
-    LSR A : ROR land_screen : LSR A : ROR land_screen : LSR A : ROR land_screen
-    LSR A : ROR land_screen : LSR A : ROR land_screen
-    LDA land_screen : CMP #LAND_SCREENS : BCC in
-    SBC #LAND_SCREENS : STA land_screen
-.in
-    CLC
-    LDA land_ids : ADC #LO(landmap) : STA land_ids
-    LDA land_ids+1 : ADC #HI(landmap) : STA land_ids+1
-    JMP draw_land
-}
-ENDIF
-\ Draw the 32 columns at land_ids in landscape screen land_screen's
-\ colours.
-.draw_land
-{
-    ZA_AUTO1 col
-    ZA_AUTO1 row
+    PHA
     \ Its map, landpal + 8 * the screen.
-    LDA land_screen
     LDX #0 : STX cmap_src+1
     ASL A : ASL A : ASL A : ROL cmap_src+1      ; (8 * 60 < 512)
     ADC #LO(landpal) : STA cmap_src
     LDA cmap_src+1 : ADC #HI(landpal) : STA cmap_src+1
     JSR set_lower_cmap
     \ Its colours: 2 bytes a screen after the maps, logical 1's and 3's.
-    LDA land_screen : ASL A : TAY               ; (2 * 60 < 256)
+    PLA : ASL A : TAY                           ; (2 * 60 < 256)
     LDX landpal + 8 * LAND_SCREENS + 1,Y
     LDA landpal + 8 * LAND_SCREENS,Y
-    SEC : JSR set_lower_palette
+    SEC : JMP set_lower_palette
+}
+
+IF DEFINED(VIEWER)
+\ Draw the 32 columns at land_ids in landscape screen land_screen's
+\ colours, as the original prints them under BRIGHT (the viewer's: the
+\ game prints them through PRINT, scroll.6502).
+.draw_land
+{
+    ZA_AUTO1 col
+    ZA_AUTO1 row
+    LDA land_screen : JSR land_colours
     LDA #0 : STA col
 .column
     LDY col : LDA (land_ids),Y : TAY
@@ -108,6 +94,7 @@ ENDIF
     INC col : LDA col : CMP #32 : BNE column
     RTS
 }
+ENDIF
 
 \ Glyph c of font A is at landfont + 8c - 256, of font B at + 8c + 512.
 .land_font_lo

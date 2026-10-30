@@ -9,7 +9,10 @@ seed set to the scenario's just after RANDOMIZE (25606), 4 held at the
 menu until the house scene starts (26691), then at the top of each pass
 (30489 above ground, 35688 below) the variables (41015-41574) are
 noted and the pass's keys held. Writes build/passes/<name>.zx.json: a
-list of the variable blocks as hex, a pass each.
+list of the variable blocks as hex, a pass each (after any of the
+scenario's settings for that pass: =ADDR:VALUE sets the variable word at
+the original's ADDR as the next pass begins, VALUE a number or @ADDR, the
+word each machine has there).
 """
 import argparse
 import json
@@ -38,10 +41,17 @@ def scenarios(path="tests/scenarios.txt"):
         if not line:
             continue
         name, seed, *steps = line.split()
-        passes = []
+        passes = []           # each pass: (keys, [(address, value), ...] set as it begins)
+        pokes = []
         for st in steps:
+            if st.startswith("="):
+                a, _, v = st[1:].partition(":")
+                pokes.append((int(a), v))
+                continue
             keys, _, n = st.partition("*")
-            passes += [keys.replace("-", "")] * int(n or 1)
+            for i in range(int(n or 1)):
+                passes.append((keys.replace("-", ""), pokes if i == 0 else []))
+            pokes = []
         out[name] = (int(seed), passes)
     return out
 
@@ -76,8 +86,11 @@ def main():
         spec.key("4", False)
         blocks = []
         held = []
-        for keys in passes + [""]:
+        for keys, pokes in passes + [("", [])]:
             run_until(spec, set(LOOPS))
+            for a, v in pokes:
+                v = (m[int(v[1:])] | m[int(v[1:]) + 1] << 8) if v.startswith("@") else int(v)
+                m[a], m[a + 1] = v & 255, (v >> 8) & 255
             blocks.append(bytes(m[VARS:VARS_END]).hex())
             for k in held:
                 spec.key(KEYS[k], False)

@@ -21,9 +21,16 @@ function scenarios() {
         if (!line) continue;
         const [name, seed, ...steps] = line.split(/\s+/);
         const passes = [];
+        let pokes = [];
         for (const st of steps) {
+            if (st.startsWith("=")) {
+                const [a, v] = st.slice(1).split(":");
+                pokes.push([parseInt(a), v]);
+                continue;
+            }
             const [keys, n = "1"] = st.split("*");
-            for (let i = 0; i < parseInt(n); i++) passes.push(keys.replace("-", ""));
+            for (let i = 0; i < parseInt(n); i++) passes.push([keys.replace("-", ""), i === 0 ? pokes : []]);
+            pokes = [];
         }
         out[name] = { seed: parseInt(seed), passes };
     }
@@ -53,7 +60,9 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
         await b.keyUp("K4");
         const blocks = [];
         let held = [];
-        for (const keys of [...passes, ""]) {
+        const bv = b.syms.bv;
+        const word = async (a) => b.peekw(bv + a - 41015);
+        for (const [keys, pokes] of [...passes, ["", []]]) {
             const r = await b.runUntil("vm_pass", 60);
             if (r.stopped_reason !== "breakpoint") {
                 const pc = JSON.parse(await b.regs()).pc;
@@ -61,6 +70,10 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
                 const acc = await b.peekw("acc");
                 console.log(`${name}: pass ${blocks.length} never began: ${stop ? stop[0] : "pc " + pc.toString(16)}, acc ${acc}`);
                 break;
+            }
+            for (const [a, v] of pokes) {
+                const val = v.startsWith("@") ? await word(parseInt(v.slice(1))) : parseInt(v);
+                await b.write(bv + a - 41015, [val & 255, (val >> 8) & 255]);
             }
             blocks.push(Buffer.from(await b.read("bv", VARS_LEN)).toString("hex"));
             for (const k of held) await b.keyUp(KEYS[k]);

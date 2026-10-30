@@ -245,8 +245,11 @@ ENDIF
     JMP (vm_w)
     ZA_CANJUMP USR_DO
 }
-USR_AT = {55565, 55567, 55569, 45710, 51675, 51687, 52852, 51900, 50350, 50369, 42140, 57228}
-USR_DO = {usr_outdoors, usr_cottage, usr_panel, usr_room, usr_save_attrs, usr_restore_attrs, usr_moon, usr_stick, usr_game_over, usr_menu, usr_end, usr_land}
+USR_AT = {55565, 55567, 55569, 45710, 51675, 51687, 52852, 51900, 50350, 50369, 42140,
+          57228, 57130, 57042, 57066, 57092, 57111}
+USR_DO = {usr_outdoors, usr_cottage, usr_panel, usr_room, usr_save_attrs, usr_restore_attrs, usr_moon, usr_stick,
+          usr_game_over, usr_menu, usr_end,
+          usr_land, usr_column, usr_shift_left, usr_shift_right, usr_attrs_left, usr_attrs_right}
 USR_N = LEN(USR_AT)
 .usr_lo     FOR n = 0..USR_N-1 : EQUB LO(USR_AT[n]) : NEXT
 .usr_hi     FOR n = 0..USR_N-1 : EQUB HI(USR_AT[n]) : NEXT
@@ -257,6 +260,8 @@ USR_N = LEN(USR_AT)
 
 \ 45710: room (PRBUFF) over background attribute (PRBUFF+1).
 .usr_room
+    LDA #&FF : STA land_shown       ; (the lower band is the room's now)
+    CLC : JSR set_row_maps          ; (the room's from row 4)
     LDA prbuf+1 : STA room_back
     LDA prbuf : JMP draw_room
 

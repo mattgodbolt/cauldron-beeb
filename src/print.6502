@@ -156,20 +156,21 @@ CHARS_PANEL = 55874             ; the game's panel font
 \ glyph is drawn over it (decision 5's scenery), or XORed with OVER 1.
 .print_char
 {
-    \ glyph = the font CHARS names, + 8 * the character.
+    \ glyph = the font CHARS names, + 8 * the character: the ROM's, the
+    \ panel's, or the landscape's A or B (57130's).
     LDX #0 : STX glyph+1
     ASL A : ROL glyph+1 : ASL A : ROL glyph+1 : ASL A : ROL glyph+1
     STA glyph
-    LDA chars+1 : CMP #HI(CHARS_ROM) : BNE panel
-    LDA chars : CMP #LO(CHARS_ROM) : BNE bad
-    LDA #LO(romfont - 256) : LDX #HI(romfont - 256) : JMP font
-.panel
-    CMP #HI(CHARS_PANEL) : BNE bad
-    LDA chars : CMP #LO(CHARS_PANEL) : BNE bad
-    LDA #LO(panelfont - 256) : LDX #HI(panelfont - 256)
+    LDX #CHARS_N - 1
+.which
+    LDA chars : CMP chars_lo,X : BNE no
+    LDA chars+1 : CMP chars_hi,X : BEQ font
+.no
+    DEX : BPL which
+    JMP bad
 .font
-    CLC : ADC glyph : STA glyph
-    TXA : ADC glyph+1 : STA glyph+1
+    LDA font_lo,X : CLC : ADC glyph : STA glyph
+    LDA font_hi,X : ADC glyph+1 : STA glyph+1
     LDA p_flag : AND #4 : BNE bad   ; (INVERSE: never)
     LDA pr_row : LDX pr_col : JSR cell_at
     LDY #0 : LDA (attr_ptr),Y : AND mask_t : STA pr_tmp
@@ -191,6 +192,17 @@ CHARS_PANEL = 55874             ; the game's panel font
 .bad
     JMP print_bad
 }
+\ The fonts CHARS may name (the Spectrum's CHARS, 256 below the glyph of
+\ code 0), and where the port has them: glyph c at font + 8c.
+CHARS_LAND_A = 63744
+CHARS_LAND_B = 64512
+CHARS_AT   = {CHARS_ROM, CHARS_PANEL, CHARS_LAND_A, CHARS_LAND_B}
+CHARS_FONT = {romfont - 256, panelfont - 256, landfont - 256, landfont + 512}
+CHARS_N = 4
+.chars_lo   FOR n = 0..CHARS_N-1 : EQUB LO(CHARS_AT[n]) : NEXT
+.chars_hi   FOR n = 0..CHARS_N-1 : EQUB HI(CHARS_AT[n]) : NEXT
+.font_lo    FOR n = 0..CHARS_N-1 : EQUB LO(CHARS_FONT[n]) : NEXT
+.font_hi    FOR n = 0..CHARS_N-1 : EQUB HI(CHARS_FONT[n]) : NEXT
 
 \ OVER 1: the glyph XORed into the cell's lit pixels, which all take
 \ ink_mask's colour (the cell's ink).

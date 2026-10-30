@@ -8,3 +8,8 @@ fly_right   1234  U*12 R*40 -*10
 fly_left    77    U*12 L*40 -*10
 fire        99    U*8 F*20 RF*20 -*10
 up_down     5     U*30 D*30 LU*20 RD*20
+# Underground: all the keys, the witch on the ground at door N's place
+# (door_at(N), 41249 + 2(N-1)), walking left into it (as the decompiler's
+# exploration did).
+door2       7     -*3 =41239:1 =41241:1 =41243:1 =41245:1 =41247:1 =41329:@41251 =41277:40 =41365:23 L*30 R*20 U*10 L*20 F*5 -*10
+door4       21    -*3 =41239:1 =41241:1 =41243:1 =41245:1 =41247:1 =41329:@41255 =41277:40 =41365:23 L*30 R*30 UR*10 L*20 -*10

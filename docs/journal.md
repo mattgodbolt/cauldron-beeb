@@ -249,3 +249,21 @@ are zeros on the tape). After that every pass the port runs agrees:
 standing, flying each way, firing, the bats coming and hitting. Each
 scenario that flies to the edge stops at the push scroll's machine code
 (57042, 57066): the next layer.
+
+### The push scroll
+
+The landscape's machine code (56900 on) as the port's: the column
+printer (57130) through the port's PRINT, so its attributes are
+PO-ATTR's from the current colours as the original's are; a whole
+screen (57228) as 32 of those; the bitmap's and the attributes' pushes
+(57042, 57066, 57092, 57111), the cells' scenery tables (decision 5)
+pushed with the pixels. During a push the view holds two screens: the
+lower band's palette follows the view's middle column (the BASIC's own
+map pointer says where it is) and the band's cells are recoloured when
+it changes screen, which is exact since no sprite is on screen then.
+Every scenario's passes now agree with the original's through the
+scrolls.
+
+`tests/scenarios.txt` can now set variables on both machines as a pass
+begins (`=ADDR:VALUE`, or `@ADDR` for each machine's own word there),
+to set scenes up: the doors, as the decompiler's exploration did.

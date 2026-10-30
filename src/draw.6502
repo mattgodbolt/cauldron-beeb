@@ -74,6 +74,18 @@ ZA_AUTO2 cell_bg                ; cell_info's: the cell's scenery glyph
 }
     ASSERT LO(CELL_GLYPH_LO) = 0 AND LO(CELL_GLYPH_HI) = 0 AND LO(CELL_HOME) = 0
 
+IF NOT(DEFINED(VIEWER))
+\ The cell at attr_ptr's scenery colour is ink_mask (its glyph kept).
+.note_home
+{
+    ZA_AUTO2 tab
+    LDA attr_ptr : STA tab
+    LDA attr_ptr+1 : CLC : ADC #HI(CELL_HOME) - HI(attrs) : STA tab+1
+    LDY #0 : LDA ink_mask : STA (tab),Y
+    RTS
+}
+ENDIF
+
 \ Cells of rows A to 23 have no scenery: a blank glyph, colour 0.
 .clear_cells
 {

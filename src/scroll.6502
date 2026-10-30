@@ -1,0 +1,241 @@
+\ ***************************************************************************
+\ The landscape's machine code (USR mc_data + ..., the original's 56900
+\ on; docs/research/graphics.md): printing its columns, and the push
+\ scroll's steps, each as the original's does it.
+\
+\ The colours (decision 3): the lower band shows one landscape screen's
+\ palette. A push has two screens in view; the palette follows the view's
+\ middle column, and when it changes screen the band's cells are
+\ recoloured to the new one (no sprite is on screen during a push).
+\ ***************************************************************************
+
+SCROLL_VAR = 41329              ; the BASIC's map pointer: the column before the view's first
+SCROLL_AT  = bv + SCROLL_VAR - 41015
+
+ZA_AUTO1 col_row                ; the cell being printed or recoloured
+ZA_AUTO1 col_col
+ZA_AUTO2 land_view              ; an original map address, then its screen
+ZA_AUTO2 sh_src                 ; the push's
+ZA_AUTO2 sh_dst
+ZA_AUTO1 sh_tmp
+ZA_AUTO 6, cl_ptr               ; the three cell tables' row pointers
+
+\ 57130: print column id PRBUFF at column PRBUFF+1, rows 16-22, through
+\ RST 16 from CHAN-OPEN 2: for each cell INK, AT and its character, in
+\ font A (ids below 216) or B. CHARS ends the ROM's (its high byte set
+\ back to 60: both fonts' low bytes are 0).
+.usr_column
+    JSR land_follow
+.print_column
+{
+    LDA prbuf : BNE ok
+    JMP vm_unbuilt                  ; (id 0: the original's ROM error, never met)
+.ok
+    JSR print_temps
+    LDA prbuf : CMP #LAND_FONT_B
+    LDA #LO(CHARS_LAND_A) : LDX #HI(CHARS_LAND_A)
+    BCC font
+    LDA #LO(CHARS_LAND_B) : LDX #HI(CHARS_LAND_B)
+.font
+    STA chars : STX chars+1
+    LDY prbuf
+    LDA landcol_lo,Y : STA land_col
+    LDA landcol_hi,Y : STA land_col+1
+    LDA #LAND_ROW : STA col_row
+.cell
+    LDA #16 : JSR print_out                     ; INK
+    LDA col_row : SEC : SBC #LAND_ROW : ASL A : TAY
+    LDA (land_col),Y : JSR print_out
+    LDA #22 : JSR print_out                     ; AT row, column
+    LDA col_row : JSR print_out
+    LDA prbuf+1 : JSR print_out
+    LDA col_row : SEC : SBC #LAND_ROW : ASL A : TAY : INY
+    LDA (land_col),Y : JSR print_out            ; the character
+    INC col_row : LDA col_row : CMP #LAND_ROW + LAND_ROWS : BNE cell
+    LDA #HI(CHARS_ROM) : STA chars+1
+    RTS
+}
+
+\ 57228: the 32 columns from the original's map address PRBUFF (a word),
+\ each through 57130, in the colours of the screen that holds the most of
+\ them. PRBUFF is left as 57130 had it last.
+.usr_land
+{
+    ZA_AUTO2 map
+    LDA prbuf : STA map : LDA prbuf+1 : STA map+1
+    CLC : LDA map : ADC #16 : STA land_view
+    LDA map+1 : ADC #0 : STA land_view+1
+    JSR land_screen_at
+    \ map -> the port's landmap
+    SEC
+    LDA map : SBC #LO(LAND_MAP - landmap) : STA map
+    LDA map+1 : SBC #HI(LAND_MAP - landmap) : STA map+1
+    LDA #0 : STA prbuf+1
+.column
+    LDY #0 : LDA (map),Y : STA prbuf
+    INC map : BNE same : INC map+1
+.same
+    JSR print_column
+    INC prbuf+1 : LDA prbuf+1 : CMP #32 : BNE column
+    LDA #31 : STA prbuf+1
+    RTS
+}
+
+\ Mid-push: the palette follows the view's middle, from the BASIC's map
+\ pointer (the column before the view: its middle is 16.5 on).
+.land_follow
+{
+    CLC
+    LDA SCROLL_AT : ADC #17 : STA land_view
+    LDA SCROLL_AT+1 : ADC #0 : STA land_view+1
+}
+\ The colours of the screen the original's map address land_view lies in
+\ (the map's tail as its first screens), unless they're shown already;
+\ recolouring the band's cells if they change.
+.land_screen_at
+{
+    SEC
+    LDA land_view : SBC #LO(LAND_MAP) : STA land_view
+    LDA land_view+1 : SBC #HI(LAND_MAP) : STA land_view+1
+    LDX #5
+.div
+    LSR land_view+1 : ROR land_view
+    DEX : BNE div
+    LDA land_view : CMP #LAND_SCREENS : BCC in
+    SBC #LAND_SCREENS
+.in
+    CMP land_shown : BEQ done
+    STA land_shown
+    JSR land_colours
+    JMP recolour_band
+.done
+    RTS
+}
+
+\ Every cell of rows 16-22 in its ink's colour now (decision 4's maps):
+\ its lit pixels and its scenery's colour (decision 5).
+.recolour_band
+{
+    LDA #LAND_ROW : STA col_row
+.row
+    LDA #0 : STA col_col
+.cell
+    LDA col_row : LDX col_col : JSR cell_at
+    LDY #0 : LDA (attr_ptr),Y : AND #7 : TAX
+    LDA col_row : JSR ink_for
+    LDY #15
+.byte
+    LDA (cell_scr),Y : LSR A : LSR A : LSR A : LSR A
+    ORA (cell_scr),Y : AND #15 : TAX
+    LDA spread,X : AND ink_mask : STA (cell_scr),Y
+    DEY : BPL byte
+    JSR note_home
+    INC col_col : LDA col_col : CMP #32 : BNE cell
+    INC col_row : LDA col_row : CMP #LAND_ROW + LAND_ROWS : BNE row
+    RTS
+}
+
+\ --- The push: rows 16-23, a cell at a time --------------------------------
+\ 57042 / 57066: the bitmap a byte left / right, 31 columns (the vacated
+\ column kept), every line; with each cell's scenery (decision 5).
+.usr_shift_left
+{
+    LDX #16
+.row
+    TXA : JSR row_ptrs
+    LDY #0
+.lo                                 ; bytes 16-271 to 0-255
+    LDA (sh_src),Y : STA (sh_dst),Y
+    INY : BNE lo
+    INC sh_src+1 : INC sh_dst+1
+.hi                                 ; bytes 272-511 to 256-495
+    LDA (sh_src),Y : STA (sh_dst),Y
+    INY : CPY #240 : BNE hi
+    TXA : JSR cells_left
+    INX : CPX #24 : BNE row
+    RTS
+}
+.usr_shift_right
+{
+    LDX #16
+.row
+    TXA : JSR row_ptrs
+    INC sh_src+1 : INC sh_dst+1
+    LDY #239
+.hi                                 ; bytes 256-495 to 272-511
+    LDA (sh_dst),Y : STA (sh_src),Y
+    DEY : CPY #&FF : BNE hi
+    DEC sh_src+1 : DEC sh_dst+1
+    LDY #255
+.lo                                 ; bytes 0-255 to 16-271
+    LDA (sh_dst),Y : STA (sh_src),Y
+    DEY : CPY #&FF : BNE lo
+    TXA : JSR cells_right
+    INX : CPX #24 : BNE row
+    RTS
+}
+\ sh_dst = row A's screen address, sh_src 16 on (a cell). X is kept.
+.row_ptrs
+    ASL A : ADC #HI(screen) : STA sh_dst+1 : STA sh_src+1
+    LDA #0 : STA sh_dst
+    LDA #16 : STA sh_src
+    RTS
+
+\ Row A's cells' scenery (the three tables) a cell left / right. X is kept.
+.cells_left
+{
+    JSR cells_ptr
+    LDY #0
+.cell
+    INY
+    FOR t = 0..2
+        LDA (cl_ptr + 2 * t),Y : DEY : STA (cl_ptr + 2 * t),Y : INY
+    NEXT
+    CPY #31 : BNE cell
+    RTS
+}
+.cells_right
+{
+    JSR cells_ptr
+    LDY #31
+.cell
+    DEY
+    FOR t = 0..2
+        LDA (cl_ptr + 2 * t),Y : INY : STA (cl_ptr + 2 * t),Y : DEY
+    NEXT
+    CPY #0 : BNE cell
+    RTS
+}
+\ cl_ptr: row A's start in each of the cells' tables (page-aligned, 32 a
+\ row). X is kept.
+.cells_ptr
+{
+    PHA
+    AND #7 : ASL A : ASL A : ASL A : ASL A : ASL A
+    STA cl_ptr : STA cl_ptr+2 : STA cl_ptr+4
+    PLA : LSR A : LSR A : LSR A : STA sh_tmp            ; (the row's page)
+    FOR t = 0..2
+        LDA #HI({CELL_GLYPH_LO, CELL_GLYPH_HI, CELL_HOME}[t]) : CLC : ADC sh_tmp : STA cl_ptr + 2 * t + 1
+    NEXT
+    RTS
+}
+
+\ 57092 / 57111: rows 16-23's attributes a cell left / right, 31 a row.
+.usr_attrs_left
+{
+    LDX #0
+.cell
+    LDA attrs + 16 * 32 + 1,X : STA attrs + 16 * 32,X
+    INX : TXA : AND #31 : CMP #31 : BNE cell
+    INX : CPX #0 : BNE cell
+    RTS
+}
+.usr_attrs_right
+{
+    LDX #255
+.cell
+    LDA attrs + 16 * 32 - 1,X : STA attrs + 16 * 32,X
+    DEX : TXA : AND #31 : BNE cell
+    DEX : CPX #&FF : BNE cell
+    RTS
+}
