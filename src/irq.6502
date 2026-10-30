@@ -1,0 +1,57 @@
+\ ***************************************************************************
+\ The interrupt handler. It owns IRQ1V outright (after the port kit's
+\ lib/irq.6502): nothing goes to the OS, so the OS's 100Hz tick, sound and
+\ keyboard interrupt stop, and its workspace stays still. VSync only, for
+\ now: it counts frames and writes the palette.
+\
+\ In MODE 1 a palette entry is picked by more than the pixel's own colour:
+\ the ULA forms the entry number from bits 7, 5, 3 and 1 of a shift
+\ register that moves one bit a pixel, so a pixel's entry depends on its
+\ neighbour's colour too. All sixteen entries are written (palette_ula).
+\ ***************************************************************************
+
+
+.irq_handler
+{
+    ZA_INTERRUPT
+    LDA sysvia_ifr : AND #2 : BEQ done
+    STA sysvia_ifr              ; acknowledge
+    INC vsyncs
+    TXA : PHA
+    LDX #15
+.entries
+    LDA palette_ula,X : STA ula_pal
+    DEX : BPL entries
+    PLA : TAX
+.done
+    LDA &FC                     ; the interrupted A, saved by the OS
+    RTI
+}
+
+\ Wait for the next VSync.
+.wait_vsync
+{
+    LDA vsyncs
+.wait
+    CMP vsyncs : BEQ wait
+    RTS
+}
+
+\ Logical colours 0-3 show the physical colours at palette_phys: fill all
+\ sixteen entries of palette_ula, which the interrupt writes every frame.
+\ Entry i is logical colour (bit 3 of i, bit 1 of i) beside another.
+.set_palette
+{
+    LDY #15
+.entry
+    LDX entry_logical,Y
+    TYA : ASL A : ASL A : ASL A : ASL A
+    ORA palette_phys,X : EOR #7
+    STA palette_ula,Y
+    DEY : BPL entry
+    RTS
+}
+.entry_logical
+FOR i = 0..15
+    EQUB (i AND 8) DIV 4 + (i AND 2) DIV 2
+NEXT

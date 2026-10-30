@@ -73,3 +73,13 @@ make venv       # .venv with SkoolKit and Pillow (needs uv)
 - The TAP's BASIC loads the screen at 40000 (copied to the display), the
   game at 24600-65535, waits for a key and calls 24600. The menu: 1
   Kempston, 2 Sinclair II, 3 keys (CAPS SHIFT to V), 4 play.
+
+## The BBC side
+
+- `make` builds `build/cauldron.ssd` (`src/main.6502`) with its symbols in
+  `build/cauldron.json`; `make run` boots it to the label `shown`.
+- Data converted from the original is made into `build/data/` by the
+  tools at build time (`tools/mkscreen.py`), never committed.
+- `!BOOT` mustn't load into screen memory: the OS echoes `!BOOT`'s lines
+  into MODE 7's screen at `&7C00`, inside ours. The game loads with OSFILE
+  before it takes the machine.

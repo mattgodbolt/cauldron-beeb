@@ -1,0 +1,75 @@
+\ ***************************************************************************
+\ CAULDRON for the BBC Micro - build file
+\
+\ The screen layer for now: !BOOT runs CAULDRN, which loads TITLE (the
+\ Spectrum's loading screen, converted by tools/mkscreen.py) straight into
+\ screen memory, takes the machine over and shows it in the Spectrum's
+\ geometry. (CAULDRN loads it, not !BOOT: the OS echoes !BOOT's lines into
+\ MODE 7's screen, which is inside ours.)
+\ ***************************************************************************
+
+INCLUDE "defs.6502"
+
+\ The build stamp comes from the Makefile (-D BUILD="date time sha"), so a
+\ disc says what it is: *TYPE !BOOT shows it. A + after the sha means the
+\ tree had uncommitted changes.
+IF DEFINED(BUILD)
+    build_stamp = BUILD
+ELSE
+    build_stamp = "DEV"
+ENDIF
+
+\ The game's permanent zero page, below the allocator's pool.
+ZP_FIXED = &70
+vsyncs      = ZP_FIXED + 0      ; VSyncs so far (irq.6502)
+ZP_END      = ZP_FIXED + 1
+    ASSERT ZP_END <= &90        ; (&90-&9F: Econet, &A0-: the OS's NMI and beyond)
+
+SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
+    EQUS "*| CAULDRON ", build_stamp, 13
+    EQUS "*RUN CAULDRN", 13
+ENDSECTION
+
+SECTION Title, org = screen, load = &FFFF0000 OR screen, exec = &FFFF0000 OR screen, filename = "TITLE"
+    INCBIN "../build/data/title.bin"
+    ASSERT P% = &8000
+ENDSECTION
+
+SECTION Code, org = &1900, load = &FFFF1900, exec = &FFFF0000 + start, filename = "CAULDRN", guard = screen
+    ZA_POOL &00..ZP_FIXED-1
+
+.start
+{
+    ZA_ENTRY
+    LDX #LO(title_block) : LDY #HI(title_block)
+    LDA #&FF : JSR osfile           ; load TITLE at its own address
+    SEI
+    LDX #&FF : TXS
+    JSR init_system
+    JSR set_palette
+    JSR wait_vsync
+    LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
+}
+.shown                              ; (global: the tools run to here)
+    JMP shown
+
+\ OSFILE's block for loading TITLE where it was saved.
+.title_block
+    EQUW title_name
+    EQUD 0, &FFFFFFFF               ; (exec's low byte non-zero: its own address)
+    EQUD 0, 0
+.title_name
+    EQUS "TITLE", 13
+
+    INCLUDE "system.6502"
+    INCLUDE "irq.6502"
+    INCLUDE "screen.6502"
+
+.palette_ula    SKIP 16
+\ The loading screen's four colours (provisional: tools/mkscreen.py picks
+\ them).
+.palette_phys
+    INCBIN "../build/data/title_pal.bin"
+.code_end
+    PRINT "code &1900-&", ~code_end
+ENDSECTION

@@ -1,0 +1,24 @@
+\ ***************************************************************************
+\ System: the keyboard, read from the System VIA as the OS's INKEY does,
+\ so the game makes no OS calls once it owns the machine.
+\ ***************************************************************************
+
+\ Is a key down? X = internal key number. Z clear (BNE) if it is.
+.key_down
+    LDA #&7F : STA sysvia_ddra      ; bits 0-6 the key, bit 7 its state
+    LDA #3 : STA sysvia_orb         ; auto-scan off: the matrix is ours
+    STX sysvia_ora_nh
+    LDA sysvia_ora_nh : AND #&80
+    RTS
+
+\ Is any key down, other than SHIFT, CTRL and the start-up links? Z clear if so.
+.any_key
+{
+    LDX #&10
+.scan
+    JSR key_down : BNE done
+    INX : BPL scan
+    TAX                             ; (A = 0) Z set: none
+.done
+    RTS
+}

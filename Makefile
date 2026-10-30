@@ -1,5 +1,8 @@
 # CAULDRON — BBC Micro port
 #
+#   make          assemble build/cauldron.ssd (+ build/cauldron.json, the
+#                 symbols, and build/listing.txt)
+#   make run      boot it in jsbeeb, screenshot to shots/run.png
 #   make fetch    download the Spectrum original into original/
 #   make zx       load the original's tape into build/cauldron.z80, stopped
 #                 at the game's entry (24600, after the loader's PAUSE)
@@ -8,11 +11,34 @@
 #   make venv     the Python tools' environment (.venv with SkoolKit, Pillow)
 
 PYTHON  ?= .venv/bin/python
+BARON   ?= $(firstword $(wildcard ../baron/build/src/baron) baron)
+# Baron, failing on a warning too (every disc builds with --warn 2).
+ASM      = BARON=$(BARON) tools/asm.sh
+# The jsbeeb model the test tools use (tools/beeb.mjs reads CAULDRON_MODEL).
+MODEL   ?= B-DFS1.2
+export CAULDRON_MODEL = $(MODEL)
+TARGET   = build/cauldron.ssd
+SOURCES  = $(wildcard src/*.6502)
+# Made from the original by the tools, never committed (original/README.md).
+GENERATED = build/data/title.bin
+# Stamped into !BOOT, so a disc says what it is: UTC build time and the
+# commit, with + if the tree had changes.
+BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
-.PHONY: all fetch zx disasm venv clean
+.PHONY: all run fetch zx disasm venv clean
 
-all: zx
+all: $(TARGET)
+
+$(TARGET): $(SOURCES) $(GENERATED) | build
+	@python3 tools/lint_labels.py > /dev/null || python3 tools/lint_labels.py
+	$(ASM) -D 'BUILD="$(BUILD)"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) -v -log0 build/listing.txt src/main.6502
+
+build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
+	python3 tools/mkscreen.py $< $@
+
+run: $(TARGET)
+	node tools/play.mjs 'f5,!run' shots/ --disc $(TARGET) --until shown
 
 build:
 	mkdir -p build
