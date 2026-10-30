@@ -1,17 +1,22 @@
 \ ***************************************************************************
 \ CAULDRON for the BBC Micro - build file
 \
-\ The screen and drawing layers for now. !BOOT runs CAULDRN, whose loader
-\ puts CAULDAT in a sideways RAM bank and TITLE (the Spectrum's loading
-\ screen, converted by tools/mkscreen.py) straight into screen memory,
-\ then copies the game down to &0E00 and runs it: it takes the machine
-\ over and shows TITLE in the Spectrum's geometry, and a key goes on to
-\ the viewer (viewer.6502), which draws the scenes. (CAULDRN loads TITLE,
-\ not !BOOT: the OS echoes !BOOT's lines into MODE 7's screen, which is
+\ !BOOT runs CAULDRN, whose loader puts CAULDAT (the drawing's data) and
+\ CAULLOG (the compiled BASIC and its tables) in sideways RAM banks and
+\ TITLE (the Spectrum's loading screen, converted by tools/mkscreen.py)
+\ straight into screen memory, then copies the game down to &0E00 and
+\ runs it: it takes the machine over and shows TITLE in the Spectrum's
+\ geometry, and a key starts the original's program (as its loader's
+\ PAUSE 0 does), on the interpreter (vm.6502, decision 10). With
+\ -D VIEWER=1 the key goes to the viewer (viewer.6502) instead, which
+\ draws the scenes for the drawing's checks. (CAULDRN loads TITLE, not
+\ !BOOT: the OS echoes !BOOT's lines into MODE 7's screen, which is
 \ inside ours.)
 \ ***************************************************************************
 
 INCLUDE "defs.6502"
+INCLUDE "../build/vmops.6502"
+INCLUDE "vmzp.6502"
 
 \ The build stamp comes from the Makefile (-D BUILD="date time sha"), so a
 \ disc says what it is: *TYPE !BOOT shows it. A + after the sha means the
@@ -37,12 +42,19 @@ attr_t      = ZP_FIXED + 10     ; ... which SPRITE's modes read
 mask_t      = ZP_FIXED + 11
 test_n      = ZP_FIXED + 12     ; the viewer's sprite tests to run (viewer.6502)
 view_sprites = ZP_FIXED + 13    ; the viewer draws its sprites over the scenes
-ZP_END      = ZP_FIXED + 14
+data_bank   = ZP_FIXED + 14     ; the sideways banks: the drawing's data (CAULDAT)
+logic_bank  = ZP_FIXED + 15     ; ... the bytecode and the logic's tables (CAULLOG)
+rnd_seed    = ZP_FIXED + 16     ; the Spectrum's system variables the BASIC uses:
+frames      = ZP_FIXED + 18     ; RND's seed (DEFADD), FRAMES (the VSyncs since
+prbuf       = ZP_FIXED + 20     ; the game began), PRBUFF (USR's parameters),
+chars       = ZP_FIXED + 22     ; CHARS (the font PRINT uses) and NMIADD
+stick_res   = ZP_FIXED + 24     ; (the controls, 51900's)
+ZP_END      = ZP_FIXED + 26
     ASSERT ZP_END <= &90        ; (&90-&9F: Econet, &A0-: the OS's NMI and beyond)
 
 SECTION Boot, filename = "!BOOT", exec = &FFFFFFFF
     EQUS "*| CAULDRON ", build_stamp, 13
-    EQUS "*RUN CAULDRN", 13
+    EQUS "*RUN LOADER", 13
 ENDSECTION
 
 SECTION Title, org = screen, load = &FFFF0000 OR screen, exec = &FFFF0000 OR screen, filename = "TITLE"
@@ -52,10 +64,10 @@ ENDSECTION
 
 \ The original's data (tools/mkdata.py, build/data), for the sideways
 \ RAM bank: CAULDRN loads it at DATA_LOAD and copies it to the first free bank
-\ (find_bank), which stays paged in.
-\ DATA_LOAD: high enough to clear CAULDRN's file, low enough for the data
-\ to end below &8000 (over MODE 7's screen, which only shows it).
-DATA_LOAD = &4500
+\ (load_banks).
+\ DATA_LOAD: where LOADER stages each bank's file, low enough for it to
+\ end below LOADER itself.
+DATA_LOAD = &1900
 SECTION Data, org = &8000, load = &FFFF0000 OR DATA_LOAD, exec = &FFFF0000 OR DATA_LOAD, filename = "CAULDAT", guard = &C000
 \ The original's data (tools/mkdata.py, build/data): page-aligned where
 \ the drawing adds an offset to a page: roompal first.
@@ -70,92 +82,64 @@ SECTION Data, org = &8000, load = &FFFF0000 OR DATA_LOAD, exec = &FFFF0000 OR DA
 .panelfont  INCBIN "../build/data/panelfont.bin"
 .scenery    INCBIN "../build/data/scenery.bin"
 .bandmaps   INCBIN "../build/data/bandmaps.bin"
+.romfont    INCBIN "../build/data/romfont.bin"
 .data_end
     PRINT "sideways data &8000-&", ~data_end
-    ASSERT DATA_LOAD + data_end - &8000 <= &8000
+    ASSERT DATA_LOAD + data_end - &8000 <= LOADER_ORG
 ENDSECTION
 
-\ CAULDRN: the game, assembled to run from &0E00 (the DFS's workspace,
-\ free once the game owns the machine), loaded at &1900 with the loader
-\ after it, which does the disc's work and copies it down.
-SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filename = "CAULDRN"
-.payload
-    SECTION Code, org = &0E00, guard = screen
-    ZA_POOL &00..ZP_FIXED-1
-.code_start
+\ The compiled BASIC (tools/bas2vm.py) and the tables it reads and writes
+\ (tools/mkdata.py's logictab.bin, vmxlat.6502), for a sideways RAM bank
+\ of its own: paged in while the interpreter runs.
+SECTION Logic, org = &8000, load = &FFFF0000 OR DATA_LOAD, exec = &FFFF0000 OR DATA_LOAD, filename = "CAULLOG", guard = &C000
+    INCLUDE "../build/logic.6502"
+.logictab   INCBIN "../build/data/logictab.bin"
+.logic_end
+    PRINT "sideways logic &8000-&", ~logic_end
+    ASSERT DATA_LOAD + logic_end - &8000 <= LOADER_ORG
+ENDSECTION
 
-.start
-{
-    ZA_ENTRY
-    LDX #&FF : TXS
-    JSR init_system
-    LDA #0 : STA test_n
-    LDA #1 : STA view_sprites
-    JSR init_cmaps
-    JSR set_palette
-    JSR wait_vsync
-    LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
-}
-.shown                              ; (global: the tools run to here)
-    JSR any_key : BEQ shown
-    JMP viewer
 
-    INCLUDE "system.6502"
-    INCLUDE "irq.6502"
-    INCLUDE "screen.6502"
-    INCLUDE "draw.6502"
-    INCLUDE "land.6502"
-    INCLUDE "room.6502"
-    INCLUDE "print.6502"
-    INCLUDE "scene.6502"
-    INCLUDE "sprite.6502"
-    INCLUDE "viewer.6502"
-
-\ The sprite graphics (tools/mkdata.py's regions), in main RAM.
-.sprites        INCBIN "../build/data/sprites.bin"
-    ASSERT P% - sprites = SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2] + SPR_LEN[3]
-\ The loading screen's four colours (tools/mkscreen.py picks them).
-.palette_phys
-    INCBIN "../build/data/title_pal.bin"
-.code_end
-    ENDSECTION
-.payload_end
-
-\ The loader: runs where the file loaded, after the payload, and nothing
-\ in it is wanted afterwards. CAULDAT into the sideways bank and TITLE
-\ into the screen, with the OS and the DFS; then the machine is the
-\ game's: the payload down to &0E00, over the DFS's workspace.
-LD_SRC = &80                    ; (the loader's zero page: the game's isn't set up)
+LD_SRC = &80                        ; (the loaders' zero page: the game's isn't set up)
 LD_DST = &82
-.loader
-    JSR find_bank
-    LDX #LO(title_block) : LDY #HI(title_block)
-    LDA #&FF : JSR osfile           ; load TITLE at its own address
-    SEI                             ; the interrupts stay off until install_irq
-    LDA #LO(payload) : STA LD_SRC : LDA #HI(payload) : STA LD_SRC+1
-    LDA #LO(code_start) : STA LD_DST : LDA #HI(code_start) : STA LD_DST+1
-    LDX #HI(code_end - code_start + &FF)
-    LDY #0
-.copy_down
-    LDA (LD_SRC),Y : STA (LD_DST),Y ; (upwards, to a lower address: safe)
-    INY : BNE copy_down
-    INC LD_SRC+1 : INC LD_DST+1
-    DEX : BNE copy_down
-    JMP start
 
-\ CAULDAT into the highest free sideways RAM bank: no ROM found there at
-\ start-up, and a byte at &8000 can be flipped. It stays paged in for good
-\ (romshad is the OS's copy of romsel: it puts that back after paging
-\ ROMs itself, so write both). With none, say so and stop.
-.find_bank
+\ LOADER: !BOOT runs it first, high in memory. It stages CAULDAT and
+\ CAULLOG at DATA_LOAD, copies each to a sideways bank (leaving their
+\ numbers in data_bank and logic_bank for the game) and runs CAULDRN.
+LOADER_ORG = &7000                  ; (below MODE 7's screen at &7C00)
+SECTION Banks, org = LOADER_ORG, load = &FFFF0000 OR LOADER_ORG, exec = &FFFF0000 OR LOADER_ORG, filename = "LOADER"
+    LDA #&FF : STA data_bank        ; (no bank yet)
+    JSR load_banks
+    LDX #LO(run_game) : LDY #HI(run_game) : JMP oscli
+.run_game   EQUS "RUN CAULDRN", 13
+\ CAULDAT, then CAULLOG, each into the highest free sideways RAM bank:
+\ no ROM found there at start-up, a byte at &8000 can be flipped, and not
+\ the bank the other took. The data's stays paged in (romshad is the OS's
+\ copy of romsel: it puts that back after paging ROMs itself, so write
+\ both) until the interpreter pages the logic's. Without two, say so and
+\ stop.
+.load_banks
+    LDX #LO(load_data) : LDY #HI(load_data)
+    LDA #HI(data_end - 1) + 1 : JSR load_bank
+    STX data_bank
+    LDX #LO(load_logic) : LDY #HI(load_logic)
+    LDA #HI(logic_end - 1) + 1 : JSR load_bank
+    STX logic_bank
+    LDA data_bank : STA romshad : STA romsel
+    RTS
+\ *LOAD the file whose command is at X, Y, and copy it from DATA_LOAD to a
+\ free bank, up to the page A; X = the bank, left paged in.
+.load_bank
 {
     src = LD_SRC
     dst = LD_DST
-    LDX #LO(load_data) : LDY #HI(load_data) : JSR oscli
+    STA ld_end
+    JSR oscli
     SEI
     LDX #15
 .free
     LDA romtypes,X : BNE not_free
+    CPX data_bank : BEQ not_free    ; (the data's, once it has one)
     STX romsel
     LDA &8000 : EOR #&FF : STA &8000
     CMP &8000 : BEQ found
@@ -178,13 +162,109 @@ LD_DST = &82
     LDA (src),Y : STA (dst),Y
     INY : BNE copy
     INC src+1 : INC dst+1
-    LDA dst+1 : CMP #HI(data_end - 1) + 1 : BNE copy
+    LDA dst+1 : CMP ld_end : BNE copy
     CLI
     RTS
 }
+ld_end = LD_DST + 2                 ; (the loader's zero page)
 .load_data  EQUS "LOAD CAULDAT", 13         ; (at its own address, DATA_LOAD)
-.no_ram     EQUS "Cauldron needs 16K of sideways RAM", 13
+.load_logic EQUS "LOAD CAULLOG", 13
+.no_ram     EQUS "Cauldron needs 32K of sideways RAM", 13
 .no_ram_end
+.banks_end
+    ASSERT banks_end <= &7C00
+ENDSECTION
+
+\ CAULDRN: the game, assembled to run from &0E00 (the DFS's workspace,
+\ free once the game owns the machine), loaded at &1900 with the loader
+\ after it, which does the disc's work and copies it down.
+SECTION Loader, org = &1900, load = &FFFF1900, exec = &FFFF0000 + loader, filename = "CAULDRN"
+.payload
+    SECTION Code, org = &0E00, guard = screen
+    ZA_POOL &00..ZP_FIXED-1
+.code_start
+
+.start
+{
+    ZA_ENTRY
+    LDX #&FF : TXS
+    \ The data's bank (LOADER's), which the OS paged out for its own ROMs.
+    LDA data_bank : STA romshad : STA romsel
+    JSR init_system
+    LDA #0 : STA test_n
+    LDA #1 : STA view_sprites
+    JSR init_cmaps
+    JSR set_palette
+    JSR wait_vsync
+    LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
+}
+.shown                              ; (global: the tools run to here)
+    JSR any_key : BEQ shown
+IF DEFINED(VIEWER)
+    JMP viewer
+ELSE
+    \ The original's program from its entry (24600's JP 25592), with the
+    \ system variables as its loader left them.
+    JSR init_splits
+    LDA #6 : STA attr_p : STA attr_t            ; (its INK 6, PAPER 0)
+    LDA #0 : STA mask_p : STA mask_t : STA p_flag
+    STA rnd_seed : STA rnd_seed+1 : STA frames : STA frames+1
+    JSR chars_rom
+    LDA #VM_STACK : STA vsp
+    JSR page_logic
+    LDA #LO(L25592) : STA vpc : LDA #HI(L25592) : STA vpc+1
+    JMP vm_run
+ENDIF
+
+    INCLUDE "system.6502"
+    INCLUDE "irq.6502"
+    INCLUDE "screen.6502"
+    INCLUDE "draw.6502"
+    INCLUDE "land.6502"
+    INCLUDE "room.6502"
+    INCLUDE "print.6502"
+    INCLUDE "scene.6502"
+    INCLUDE "sprite.6502"
+IF DEFINED(VIEWER)
+    INCLUDE "viewer.6502"
+ELSE
+    INCLUDE "vm.6502"
+    INCLUDE "basrt.6502"
+    INCLUDE "vmio.6502"
+    INCLUDE "vmxlat.6502"
+    INCLUDE "../build/vmtable.6502"
+ENDIF
+
+\ The sprite graphics (tools/mkdata.py's regions), in main RAM.
+.sprites        INCBIN "../build/data/sprites.bin"
+    ASSERT P% - sprites = SPR_LEN[0] + SPR_LEN[1] + SPR_LEN[2] + SPR_LEN[3]
+\ The loading screen's four colours (tools/mkscreen.py picks them).
+.palette_phys
+    INCBIN "../build/data/title_pal.bin"
+.code_end
+    ENDSECTION
+.payload_end
+
+\ CAULDRN's loader: runs where the file loaded, after the payload, and
+\ nothing in it is wanted afterwards. TITLE into the screen, with the OS
+\ and the DFS (LOADER filled the banks); then the machine is the game's:
+\ the payload down to &0E00, over the DFS's workspace.
+.loader
+    LDX #LO(title_block) : LDY #HI(title_block)
+    LDA #&FF : JSR osfile           ; load TITLE at its own address
+    SEI                             ; the interrupts stay off until install_irq
+    LDA #LO(payload) : STA LD_SRC : LDA #HI(payload) : STA LD_SRC+1
+    LDA #LO(code_start) : STA LD_DST : LDA #HI(code_start) : STA LD_DST+1
+    LDX #HI(code_end - code_start + &FF)
+    LDY #0
+.copy_down
+    LDA (LD_SRC),Y : STA (LD_DST),Y ; (upwards, to a lower address: safe)
+    INY : BNE copy_down
+    INC LD_SRC+1 : INC LD_DST+1
+    DEX : BNE copy_down
+    JMP start
+
+
 
 \ OSFILE's block for loading TITLE where it was saved.
 .title_block
@@ -195,9 +275,10 @@ LD_DST = &82
     EQUS "TITLE", 13
 
 .loader_end
-    ASSERT loader_end <= DATA_LOAD  ; (CAULDAT loads above the file)
+    ASSERT loader_end <= screen      ; (TITLE loads over the screen after it)
 ENDSECTION
 
+VARS_LEN = 41575 - 41015
 \ The game's workspace, after its code: not in the file.
 SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .sprite_blocks  SKIP 8 * 8      ; SPRITE's parameter blocks (the original's 24759)
@@ -207,6 +288,20 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .row_map        SKIP 24
     ALIGN &100
 .attrs          SKIP 768        ; the Spectrum's attributes, as they would be
+.bv             SKIP VARS_LEN   ; the BASIC's variables, the original's 41015 on
+.bslots         SKIP 156        ; its FOR slots (24603 on)
+.attr_save      SKIP 192        ; 51675's buffer (the original's 51700)
+.pr_row         SKIP 1          ; PRINT's state (print.6502)
+.pr_col         SKIP 1
+.pr_state       SKIP 1
+.pr_code        SKIP 1
+.pr_par         SKIP 1
+.pr_tmp         SKIP 1
+.mask_p         SKIP 1          ; the Spectrum's MASK_P and P_FLAG
+.p_flag         SKIP 1
+.room_back      SKIP 1          ; 45710's background (PRBUFF+1)
+.num_lead       SKIP 1          ; PRINT n's
+.num_x          SKIP 1
 .work_end
     PRINT "code &0E00-&", ~code_end, ", workspace to &", ~work_end, " (", screen - work_end, " bytes free)"
 ENDSECTION

@@ -50,76 +50,166 @@ ZA_AUTO2 attr_ptr               ; the cell's attribute, set by cell_at
     RTS
 }
 
-\ --- The PRINT state ------------------------------------------------------
-\ The current font is print_font: glyph c at print_font + 8c (the
-\ Spectrum's CHARS + 256).
-ZA_AUTO2 print_font
-ZA_AUTO2 print_src              ; the string
-ZA_AUTO1 print_len              ; ... its length left
-ZA_AUTO1 p_ink                  ; ATTR_T's ink
-ZA_AUTO1 p_bright               ; ... and BRIGHT, as &40 or 0
-ZA_AUTO1 p_row                  ; the print position
-ZA_AUTO1 p_col
+\ --- PRINT ------------------------------------------------------------------
+\ As the ROM's, for what the original prints: characters in the font
+\ CHARS names (the ROM's or the panel's), INK, PAPER, FLASH, BRIGHT,
+\ INVERSE and OVER into the temporary colours (ATTR_T, MASK_T, P_FLAG's
+\ even bits), AT, and ENTER. The print position and the codes' state
+\ (pr_row, pr_col, pr_state ...) carry over from PRINT to PRINT, as the
+\ channel's do.
 
-\ PRINT the string at print_src, print_len bytes long, starting from
-\ attribute A (as ATTR_P gives it: CHAN-OPEN copies it to ATTR_T).
-.print_string
+CHARS_ROM   = 15360             ; the ROM's font
+CHARS_PANEL = 55874             ; the game's panel font
+
+.chars_rom
+    LDA #LO(CHARS_ROM) : STA chars : LDA #HI(CHARS_ROM) : STA chars+1
+    RTS
+.chars_panel
+    LDA #LO(CHARS_PANEL) : STA chars : LDA #HI(CHARS_PANEL) : STA chars+1
+    RTS
+
+\ TEMPS: the temporary colours from the permanent ones.
+.print_temps
+    LDA attr_p : STA attr_t
+    LDA mask_p : STA mask_t
+    LDA p_flag : AND #&AA : STA pr_tmp
+    LSR A : ORA pr_tmp : STA p_flag
+    RTS
+\ PERMS: the permanent colours from the temporary ones (INK n as a
+\ statement).
+.print_perm
+    LDA attr_t : STA attr_p
+    LDA mask_t : STA mask_p
+    LDA p_flag : AND #&55 : STA pr_tmp
+    ASL A : ORA pr_tmp : STA p_flag
+    RTS
+
+\ RST 16: one code to the screen's channel.
+.print_out
 {
-    TAX : AND #7 : STA p_ink
-    TXA : AND #&40 : STA p_bright
-.next
-    LDA print_len : BEQ done
-    JSR fetch
-    CMP #&20 : BCS char
-    CMP #&16 : BEQ at
-    CMP #&10 : BEQ ink
-    CMP #&13 : BEQ bright
-    CMP #&11 : BEQ skip1            ; PAPER: black throughout the original
-    CMP #&12 : BEQ skip1            ; FLASH: never on
-.bad
-    JMP bad                         ; (a code the original's strings don't use)
-.skip1
-    JSR fetch
-    JMP next
-.ink
-    JSR fetch : AND #7 : STA p_ink
-    JMP next
-.bright
-    JSR fetch : AND #1 : BEQ b0
-    LDA #&40
-.b0 STA p_bright
-    JMP next
+    LDX pr_state : BNE param
+    CMP #32 : BCS char
+    CMP #13 : BEQ enter
+    CMP #22 : BEQ at
+    CMP #16 : BCC bad_code
+    STA pr_code
+    LDA #1 : STA pr_state
+    RTS
 .at
-    JSR fetch : STA p_row
-    JSR fetch : STA p_col
-    JMP next
+    STA pr_code
+    LDA #2 : STA pr_state
+    RTS
+.bad_code
+    JMP print_bad
+.enter
+    LDA #0 : STA pr_col
+    INC pr_row
+    RTS
 .char
-    JSR print_char
-    JMP next
-.done
+    JMP print_char
+.param
+    DEX : BEQ apply
+    STA pr_par                      ; (AT's row)
+    DEC pr_state
     RTS
-.fetch
-    LDY #0 : LDA (print_src),Y
-    INC print_src : BNE f1 : INC print_src+1
-.f1 DEC print_len
+.apply
+    STX pr_state                    ; (0)
+    LDX pr_code
+    CPX #22 : BNE colour
+    LDX pr_par : STX pr_row
+    STA pr_col
     RTS
+.colour
+    \ (codes 16-21: INK, PAPER, FLASH, BRIGHT, INVERSE, OVER)
+    CPX #20 : BCS flags
+    CMP #8 : BCS bad                ; (8 and 9, "transparent" and "contrast": never)
+    LDY code_shift - 16,X
+.shift
+    DEY : BMI shifted
+    ASL A
+    JMP shift
+.shifted
+    STA pr_tmp
+    LDA code_mask - 16,X : AND attr_t : ORA pr_tmp : STA attr_t
+    LDA code_mask - 16,X : AND mask_t : STA mask_t
+    RTS
+.flags
+    CMP #2 : BCS bad
+    LDY #0
+    CPX #20 : BNE over
+    ASL A : ASL A : LDY #2          ; INVERSE: bit 2
+.over
+    STA pr_tmp
+    LDA p_flag : AND flag_keep - 20,X : ORA pr_tmp : STA p_flag
+    RTS
+.bad
+    JMP print_bad
+.code_shift EQUB 0, 3, 7, 6         ; INK, PAPER, FLASH, BRIGHT
+.code_mask  EQUB &F8, &C7, &7F, &BF ; ... the bits each keeps
+.flag_keep  EQUB &FB, &FE           ; INVERSE, OVER
 }
+.print_bad                          ; (global: the tests stop here)
+    JMP print_bad                   ; (a code the original never sends)
 
-\ Draw character A at p_row, p_col in p_ink and p_bright, and move on.
+\ Character A at the print position, and on. Its cell's attribute
+\ becomes PO-ATTR's, (old AND MASK_T) OR (ATTR_T AND NOT MASK_T); the
+\ glyph is drawn over it (decision 5's scenery), or XORed with OVER 1.
 .print_char
 {
+    \ glyph = the font CHARS names, + 8 * the character.
     LDX #0 : STX glyph+1
     ASL A : ROL glyph+1 : ASL A : ROL glyph+1 : ASL A : ROL glyph+1
-    CLC : ADC print_font : STA glyph
-    LDA glyph+1 : ADC print_font+1 : STA glyph+1
-    LDA p_row : LDX p_ink : JSR ink_for
-    LDA p_row : LDX p_col : JSR cell_at
-    LDA p_ink : ORA p_bright : JSR set_attr
+    STA glyph
+    LDA chars+1 : CMP #HI(CHARS_ROM) : BNE panel
+    LDA chars : CMP #LO(CHARS_ROM) : BNE bad
+    LDA #LO(romfont - 256) : LDX #HI(romfont - 256) : JMP font
+.panel
+    CMP #HI(CHARS_PANEL) : BNE bad
+    LDA chars : CMP #LO(CHARS_PANEL) : BNE bad
+    LDA #LO(panelfont - 256) : LDX #HI(panelfont - 256)
+.font
+    CLC : ADC glyph : STA glyph
+    TXA : ADC glyph+1 : STA glyph+1
+    LDA p_flag : AND #4 : BNE bad   ; (INVERSE: never)
+    LDA pr_row : LDX pr_col : JSR cell_at
+    LDY #0 : LDA (attr_ptr),Y : AND mask_t : STA pr_tmp
+    LDA mask_t : EOR #&FF : AND attr_t : ORA pr_tmp
+    STA (attr_ptr),Y
+    AND #7 : TAX : LDA pr_row : JSR ink_for
+    LDA p_flag : AND #1 : BNE over
     JSR draw_cell
-    INC p_col
-    LDA p_col : CMP #32 : BNE same
-    LDA #0 : STA p_col
-    INC p_row
-.same
+    JMP next
+.over
+    JSR xor_cell
+.next
+    INC pr_col
+    LDA pr_col : CMP #32 : BNE done
+    LDA #0 : STA pr_col
+    INC pr_row
+.done
+    RTS
+.bad
+    JMP print_bad
+}
+
+\ OVER 1: the glyph XORed into the cell's lit pixels, which all take
+\ ink_mask's colour (the cell's ink).
+.xor_cell
+{
+    ZA_AUTO2 right
+    LDA cell_scr : ORA #8 : STA right
+    LDA cell_scr+1 : STA right+1
+    LDY #7
+.line
+    LDA (cell_scr),Y : JSR lit : STA pr_tmp
+    LDA (glyph),Y : LSR A : LSR A : LSR A : LSR A : EOR pr_tmp : TAX
+    LDA spread,X : AND ink_mask : STA (cell_scr),Y
+    LDA (right),Y : JSR lit : STA pr_tmp
+    LDA (glyph),Y : AND #15 : EOR pr_tmp : TAX
+    LDA spread,X : AND ink_mask : STA (right),Y
+    DEY : BPL line
+    RTS
+.lit
+    STA pr_tmp : LSR A : LSR A : LSR A : LSR A : ORA pr_tmp : AND #15
     RTS
 }

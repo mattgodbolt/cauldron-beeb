@@ -61,7 +61,7 @@ def main():
     baron = next((b for b in ("../baron/build/src/baron",) if os.path.exists(b)), "baron")
     failed = 0
     for n in range(args.start, args.stop + 1, args.step):
-        subprocess.run(["tools/asm.sh", "-D", f"SPLIT_SWEEP={n}", "-o", "build/sweep.ssd", "--title", "SWEEP",
+        subprocess.run(["tools/asm.sh", "-D", "VIEWER=1", "-D", f"SPLIT_SWEEP={n}", "-o", "build/sweep.ssd", "--title", "SWEEP",
                         "--opt", "3", "--warn", "2", "--symbols", "build/sweep.json", "src/main.6502"],
                        check=True, env={**os.environ, "BARON": baron}, stdout=subprocess.DEVNULL)
         subprocess.run(["node", "tools/play.mjs", "SPACE:tap,@viewer_wait,=view_num:8,@viewer_wait,f3,!s",

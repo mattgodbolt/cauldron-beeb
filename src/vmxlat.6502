@@ -1,25 +1,42 @@
 \ ***************************************************************************
 \ vm_xlat's tables: where the port keeps the original's memory that the
-\ compiled BASIC addresses by value (PEEK, POKE, DPEEK, DPOKE). Regions
-\ (first, end, the port's start) and single bytes, the system variables.
-\ Each layer adds what its data needs.
+\ compiled BASIC addresses by value (PEEK, POKE, DPEEK, DPOKE), measured
+\ in play by tools/zxaccess.py. Regions (first, end, the port's start, and
+\ a kind) and single bytes, the system variables.
+\
+\ The kinds: XK_DIRECT, in main RAM or the logic bank (paged in while the
+\ interpreter runs); XK_DATA, in the data bank (paged in for the access);
+\ XK_BITMAP, the Spectrum's screen bitmap, whose bytes the port makes
+\ from its own screen's lit pixels, which are the original's.
 \ ***************************************************************************
-XLAT_FROM = {41015, 24603, 24759}
-XLAT_TO   = {41575, 24759, 24823}
-XLAT_PORT = {bv, bslots, sprite_blocks}
-XLAT_REGIONS = 3
+XK_DIRECT = 0
+XK_DATA   = 1
+XK_BITMAP = 2
+
+\ The regions: the variables, the FOR slots, the sprite blocks, the
+\ attributes, the landscape's saved attributes (51675's buffer), then the
+\ logic tables (tools/mkdata.py's LOGIC_REGIONS, one after another in
+\ logictab: build/data/logicmap.6502), the landscape map, the bitmap.
+INCLUDE "../build/data/logicmap.6502"
+XL_FROM = CONCAT({41015, 24603, 24759, 22528, 51700}, LT_FROM, {57310, 16384})
+XL_TO   = CONCAT({41575, 24759, 24823, 23296, 51892}, LT_TO, {59326, 22528})
+XL_PORT = CONCAT({bv, bslots, sprite_blocks, attrs, attr_save}, logictab + LT_AT, {landmap, 0})
+XL_KIND = CONCAT({XK_DIRECT, XK_DIRECT, XK_DIRECT, XK_DIRECT, XK_DIRECT}, LT_AT * 0 + XK_DIRECT, {XK_DATA, XK_BITMAP})
+XLAT_REGIONS = LEN(XL_FROM)
 .xlat_from_lo
-FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XLAT_FROM[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XL_FROM[n]) : NEXT
 .xlat_from_hi
-FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XLAT_FROM[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XL_FROM[n]) : NEXT
 .xlat_to_lo
-FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XLAT_TO[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XL_TO[n]) : NEXT
 .xlat_to_hi
-FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XLAT_TO[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XL_TO[n]) : NEXT
 .xlat_add_lo
-FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XLAT_PORT[n] - XLAT_FROM[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB LO(XL_PORT[n] - XL_FROM[n]) : NEXT
 .xlat_add_hi
-FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XLAT_PORT[n] - XLAT_FROM[n]) : NEXT
+FOR n = 0..XLAT_REGIONS-1 : EQUB HI(XL_PORT[n] - XL_FROM[n]) : NEXT
+.xlat_kind
+FOR n = 0..XLAT_REGIONS-1 : EQUB XL_KIND[n] : NEXT
 
 XLAT_SYS_FROM = {23563, 23564, 23672, 23673, 23296, 23297, 23606, 23607, 23693, 23695, 23728, 23729}
 XLAT_SYS_PORT = {rnd_seed, rnd_seed+1, frames, frames+1, prbuf, prbuf+1, chars, chars+1, attr_p, attr_t, stick_res, stick_res+1}

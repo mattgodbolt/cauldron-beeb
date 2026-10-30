@@ -321,6 +321,7 @@ def write_ops(path):
 def write_table(path):
     with open(path, "w") as f:
         f.write("\\ Made by tools/bas2vm.py: each opcode's handler, less 1 (for RTS).\n")
+        f.write("\\ (vm.6502's dispatch lands on any of them: ZA_CANJUMP's list.)\n")
         f.write(".vm_lo\n")
         for name, _ in OPS + [("bad", 0)]:
             f.write(f"    EQUB LO(op_{name} - 1)\n")
@@ -345,6 +346,9 @@ def main():
         f.write("\n".join(c.out) + "\n")
     write_ops(args.ops)
     write_table(args.table)
+    with open(os.path.join(os.path.dirname(args.table), "vmjump.6502"), "w") as f:
+        f.write("\\ Made by tools/bas2vm.py: where vm.6502's RTS dispatch may land.\n")
+        f.write("    ZA_CANJUMP " + ", ".join(f"op_{name}" for name, _ in OPS + [("bad", 0)]) + "\n")
     print(f"{args.out}: {c.size} bytes of bytecode; the stack reaches {c.max_depth}; "
           f"{len(bad)} statements unsupported")
     for a, why in bad[:30]:

@@ -7,7 +7,6 @@
 \ ***************************************************************************
 
 ROOM_ROW = 3                    ; the first row of blocks' character row
-ROOM_BACK = 5                   ; the background's attribute in play (cyan on black)
 
 ZA_AUTO2 room_types             ; the room's 40 block types
 ZA_AUTO2 room_block             ; a block's 24 bytes
@@ -34,9 +33,9 @@ ZA_AUTO1 room_attr
     LDA roompal + 8 * 64,Y
     CLC : JSR set_lower_palette
     \ The original's 45710 clears rows 4-23 and sets their attributes to
-    \ the background's, (23297): ROOM_BACK in play.
+    \ the background's, (23297): room_back.
     LDA #ROOM_ROW + 1 : JSR clear_rows
-    LDA #ROOM_ROW + 1 : LDX #ROOM_BACK : JSR fill_attrs
+    LDA #ROOM_ROW + 1 : LDX room_back : JSR fill_attrs
     LDA #0 : STA bi
 .next_block
     LDY bi : LDA (room_types),Y : BEQ skip

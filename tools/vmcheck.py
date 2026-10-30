@@ -103,7 +103,15 @@ def main():
     base = bytes(zsim.memory)
     sp0 = zsim.registers[SP]
     rng = random.Random(args.seed)
-    port = {"bv": (VARS, VARS_END), "bslots": (SLOTS, SLOTS_END), "sprite_blocks": (BLOCKS, BLOCKS_END)}
+    # Every region vm_xlat maps (src/vmxlat.6502) with the original's
+    # bytes in it, and compared after.
+    from mkdata import LOGIC_REGIONS
+    port = {"bv": (VARS, VARS_END), "bslots": (SLOTS, SLOTS_END), "sprite_blocks": (BLOCKS, BLOCKS_END),
+            "attrs": (22528, 23296), "attr_save": (51700, 51892), "landmap": (57310, 59326)}
+    at = 0
+    for lo, hi in LOGIC_REGIONS:
+        port[f"logictab+{at}"] = (lo, hi)
+        at += hi - lo
     agree = disagree = unbuilt = 0
     unmapped = set()
     skipped = 0
@@ -141,7 +149,8 @@ def main():
             cpu.memory = bytearray(65536)
             cpu.memory[ORG:ORG + len(image)] = image
             for name, (lo, hi) in port.items():
-                cpu.memory[syms[name]:syms[name] + hi - lo] = mem[lo:hi]
+                p = place_addr(syms, name)
+                cpu.memory[p:p + hi - lo] = mem[lo:hi]
             # (FOR slots hold the original's loop-back addresses: the port's labels.)
             for a in range(SLOTS, SLOTS_END, 6):
                 back = mem[a + 4] | mem[a + 5] << 8
@@ -162,13 +171,14 @@ def main():
                     if not first and here in label_at:
                         break
                     first = False
-                if cpu.pc in (syms["vm_unbuilt"], syms["vm_bad_address"]):
+                if cpu.pc in (syms["vm_unbuilt"], syms["vm_bad_address"], syms["vm_bad_kind"]):
                     break
                 cpu.step()
             if cpu.pc == syms["vm_unbuilt"]:
-                bad = "stopped at vm_unbuilt"
+                # (a PEEK of the bitmap: the screen's, not the interpreter's)
+                skipped += 1
                 break
-            if cpu.pc == syms["vm_bad_address"]:
+            if cpu.pc in (syms["vm_bad_address"], syms["vm_bad_kind"]):
                 # An address the port has no place for: data not built yet,
                 # or a random index far outside its array. The Z80's run
                 # says which: if it touched only what the port maps, it's ours.
@@ -181,10 +191,11 @@ def main():
             pm = cpu.memory
             diffs = []
             for name, (lo, hi) in port.items():
+                p = place_addr(syms, name)
                 for a in range(lo, hi):
                     if name == "bslots" and (a - SLOTS) % 6 in (4, 5):
                         continue                   # (the loop-back: compared as labels below)
-                    if pm[syms[name] + a - lo] != zmem[a]:
+                    if pm[p + a - lo] != zmem[a]:
                         diffs.append(a)
             for a in range(SLOTS, SLOTS_END, 6):
                 zb = zmem[a + 4] | zmem[a + 5] << 8

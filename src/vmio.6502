@@ -1,0 +1,336 @@
+\ ***************************************************************************
+\ The interpreter's operations that do what only the port can (vm.6502,
+\ decision 10): the screen (SPRITE, PRINT, CLS, ATTR, POINT), the frame
+\ (PAUSE, HALT), the keys (INKEY$, IN) and sound, and USR: the original's
+\ machine code, each routine the port's own.
+\
+\ The interpreter runs with the logic bank paged in (the bytecode, the
+\ logic's tables); what draws reads the data bank (the fonts, the
+\ landscape, the rooms), so those operations page it in and back.
+\ ***************************************************************************
+
+\ What the port hasn't yet: the tests stop here (acc, for USR, the
+\ address).
+.op_bad
+.vm_unbuilt
+    JMP vm_unbuilt
+
+.page_data
+    LDA data_bank : STA romshad : STA romsel
+    RTS
+.page_logic
+    LDA logic_bank : STA romshad : STA romsel
+    RTS
+
+\ --- The screen ----------------------------------------------------------------
+.op_sprite
+    JSR pop_acc : LDX acc
+    JSR sprite                      ; (no data bank: the sprites are in main RAM)
+    JMP vm_next
+
+\ ATTR(row, column), as the library's 25089 forms the address: the
+\ column XORed into the low byte, so a column past 31 lands where the
+\ original's does.
+.op_attr
+{
+    JSR two                         ; acc = the row, arg = the column
+    LDA acc : AND #7 : ASL A : ASL A : ASL A : ASL A : ASL A
+    EOR arg : STA eptr
+    LDA acc : LSR A : LSR A : LSR A : AND #3 : CLC : ADC #HI(attrs) : STA eptr+1
+    ASSERT LO(attrs) = 0
+    LDY #0 : LDA (eptr),Y
+    JMP push_a_next
+}
+
+\ POINT(x, y): the pixel lit or not, from the port's screen (the
+\ original's pixels). y is PLOT's: 175 the top line.
+.op_point
+{
+    JSR two                         ; acc = x, arg = y
+    LDA #175 : SEC : SBC arg : STA bm_line
+    LDA acc : LSR A : LSR A : LSR A : TAX
+    LDA bm_line : LSR A : LSR A : LSR A : JSR cell_at
+    LDA bm_line : AND #7 : STA bm_tmp
+    LDA acc : AND #4 : ASL A : ORA bm_tmp : TAY  ; (the right half: 8 on)
+    LDA acc : AND #3 : TAX
+    LDA (cell_scr),Y : AND point_mask,X
+    BEQ none
+    LDA #1
+.none
+    JMP push_a_next
+}
+.point_mask EQUB &88, &44, &22, &11     ; pixel 0-3 of a byte, either bit
+
+\ CLS (the ROM's): the upper screen under ATTR_P, the lower two rows
+\ under BORDCR's, the print position home.
+.op_cls
+    JSR page_data
+    SEC : JSR set_row_maps          ; (the bands: the sky's until the room's say not)
+    LDA attr_p : JSR cls_attr
+    JSR page_logic
+    JMP vm_next
+
+\ --- PRINT -------------------------------------------------------------------
+.op_chan                            ; (CHAN-OPEN: the screen's, then TEMPS)
+    JSR pop_acc
+.op_temps
+    JSR print_temps
+    JMP vm_next
+.op_perm
+    JSR print_perm
+    JMP vm_next
+.op_out
+    JSR pop_acc
+    JSR page_data
+    LDA acc : JSR print_out
+    JSR page_logic
+    JMP vm_next
+\ PR-STRING: the length on top, the original's address under it, read a
+\ byte at a time from wherever vm_xlat finds it.
+.op_str
+{
+    JSR pop_arg                     ; the length
+    JSR pop_acc : JSR vm_xlat
+    LDA xk : BEQ ok
+    JMP vm_bad_kind
+.ok
+    LDA arg : ORA arg+1 : BEQ done
+    JSR page_logic
+    LDY #0 : LDA (eptr),Y : PHA
+    JSR page_data
+    PLA : JSR print_out
+    INC eptr : BNE dec : INC eptr+1
+.dec
+    LDA arg : BNE lo : DEC arg+1
+.lo DEC arg
+    JMP ok
+.done
+    JSR page_logic
+    JMP vm_next
+}
+\ PRINT n (25252): signed, without leading zeros.
+.op_num
+{
+    JSR pop_acc
+    JSR page_data
+    LDA acc+1 : BPL pos
+    LDA #'-' : JSR print_out
+    JSR rt_neg
+.pos
+    LDX #0 : STX num_lead           ; (no digit yet)
+.digit
+    LDA pow10_lo,X : STA arg : LDA pow10_hi,X : STA arg+1
+    TXA : PHA
+    JSR rt_div                      ; acc = the digit, arg = the rest
+    PLA : TAX
+    LDA acc : ORA num_lead : BEQ skip
+    STA num_lead
+    LDA acc : ORA #'0'
+    STX num_x : JSR print_out : LDX num_x
+.skip
+    LDA arg : STA acc : LDA arg+1 : STA acc+1
+    INX : CPX #4 : BNE digit
+    LDA acc : ORA #'0' : JSR print_out
+    JSR page_logic
+    JMP vm_next
+.pow10_lo   EQUB LO(10000), LO(1000), LO(100), LO(10)
+.pow10_hi   EQUB HI(10000), HI(1000), HI(100), HI(10)
+}
+
+\ --- The frame ---------------------------------------------------------------
+.op_halt
+    JSR wait_vsync
+    JMP vm_next
+\ HALT n times.
+.op_wait
+{
+    JSR vm_word
+.frame
+    LDA vm_w : ORA vm_w+1 : BEQ done
+    JSR wait_vsync
+    LDA vm_w : BNE lo : DEC vm_w+1
+.lo DEC vm_w
+    JMP frame
+.done
+    JMP vm_next
+}
+\ PAUSE n: n frames, or until a key; PAUSE 0 waits for a key alone.
+.op_pause
+{
+    JSR pop_acc
+.frame
+    JSR wait_vsync
+    JSR any_key : BNE done
+    LDA acc : ORA acc+1 : BEQ frame
+    LDA acc : BNE lo : DEC acc+1
+.lo DEC acc
+    LDA acc : ORA acc+1 : BNE frame
+.done
+    JMP vm_next
+}
+
+\ --- The keys -------------------------------------------------------------------
+\ IN port: the Kempston joystick's 31 reads 0, no interface (as the
+\ original's headless harness has it); nothing else is read.
+.op_in
+    JSR pop_acc
+    LDA #0 : JMP push_a_next
+
+\ INKEY$ (only the menu reads it): the code of the Spectrum key whose BBC
+\ key is down, or 0. The menu wants 1 to 4.
+.op_inkey
+{
+    LDY #inkey_keys_end - inkey_keys - 1
+.key
+    LDX inkey_keys,Y : JSR key_down : BNE found
+    DEY : BPL key
+    LDA #0 : JMP push_a_next
+.found
+    LDA inkey_codes,Y : JMP push_a_next
+}
+.inkey_keys     EQUB &30, &31, &11, &12     ; the BBC's 1, 2, 3, 4 (internal numbers)
+.inkey_keys_end
+.inkey_codes    EQUB '1', '2', '3', '4'
+
+\ --- Sound (decision 8: the sound layer) ----------------------------------
+.op_beeper
+    JSR two
+    JMP vm_next
+.op_beep
+    JSR pop_acc
+    JMP vm_next
+
+\ --- USR -------------------------------------------------------------------------
+\ The original's machine code, by its address: each the port's routine.
+\ The result is the original's BC, which no statement reads; 0 here.
+.op_usr
+{
+    JSR pop_acc
+    LDX #USR_N - 1
+.find
+    LDA acc : CMP usr_lo,X : BNE no
+    LDA acc+1 : CMP usr_hi,X : BEQ found
+.no
+    DEX : BPL find
+    JMP vm_unbuilt                  ; (acc: the address)
+.found
+    JSR page_data
+    LDA usr_jlo,X : STA vm_w : LDA usr_jhi,X : STA vm_w+1
+    JSR call_w
+    JSR page_logic
+    LDA #0 : JMP push_a_next
+.call_w
+    JMP (vm_w)
+    ZA_CANJUMP USR_DO
+}
+USR_AT = {55565, 55567, 55569, 45710, 51675, 51687, 52852, 51900, 50350, 50369, 42140, 57228}
+USR_DO = {usr_outdoors, usr_cottage, usr_panel, usr_room, usr_save_attrs, usr_restore_attrs, usr_moon, usr_stick, usr_game_over, usr_menu, usr_end, usr_land}
+USR_N = LEN(USR_AT)
+.usr_lo     FOR n = 0..USR_N-1 : EQUB LO(USR_AT[n]) : NEXT
+.usr_hi     FOR n = 0..USR_N-1 : EQUB HI(USR_AT[n]) : NEXT
+.usr_jlo    FOR n = 0..USR_N-1 : EQUB LO(USR_DO[n]) : NEXT
+.usr_jhi    FOR n = 0..USR_N-1 : EQUB HI(USR_DO[n]) : NEXT
+
+\ (55565, 55567, 55569: scene.6502's usr_outdoors, usr_cottage, usr_panel.)
+
+\ 45710: room (PRBUFF) over background attribute (PRBUFF+1).
+.usr_room
+    LDA prbuf+1 : STA room_back
+    LDA prbuf : JMP draw_room
+
+\ 51675 and 51687: rows 16-21's attributes to and from the buffer (the
+\ original's 51700).
+.usr_save_attrs
+{
+    LDX #191
+.copy
+    LDA attrs + 16 * 32,X : STA attr_save,X
+    DEX : CPX #&FF : BNE copy
+    RTS
+}
+.usr_restore_attrs
+{
+    LDX #191
+.copy
+    LDA attr_save,X : STA attrs + 16 * 32,X
+    DEX : CPX #&FF : BNE copy
+    RTS
+}
+
+\ 52852: the moon's 5 x 6 attributes (the original's 52820) at row 7,
+\ column 6.
+MOON_ATTRS = logictab + LT_AT[5]
+    ASSERT LT_FROM[5] = 52820
+.usr_moon
+{
+    JSR page_logic                  ; (the table is the logic bank's)
+    LDX #0 : LDY #0
+.row
+    LDA #6 : STA bm_tmp
+.cell
+    LDA MOON_ATTRS,X : STA attrs + 7 * 32 + 6,Y
+    INX : INY : DEC bm_tmp : BNE cell
+    TYA : CLC : ADC #26 : TAY
+    CPX #30 : BNE row
+    RTS
+}
+
+\ 51900: the controls into STICK_RES (the direction 1-8 clockwise from
+\ up, or 0) and STICK_RES+1 (fire), by the original's table for its keys
+\ (decision 9's BBC keys standing in for CAPS SHIFT, Z, X, C and V).
+.usr_stick
+{
+    LDA #0 : STA stick_res : STA stick_res+1
+    LDA #31 : STA bm_tmp            ; the half-row as IN reads it: a 0 a key down
+    LDY #4
+.key
+    LDX stick_keys,Y : JSR key_down : BEQ up
+    LDA bm_tmp : EOR stick_bits,Y : STA bm_tmp
+.up
+    DEY : BPL key
+    LDX bm_tmp
+    LDA stick_table,X : BMI none
+    PHA : AND #&0F : STA stick_res
+    PLA : LSR A : LSR A : LSR A : LSR A : STA stick_res+1
+.none
+    RTS
+}
+\ CAPS SHIFT (left), Z (right), X (down), C (up), V (fire): the BBC's Z,
+\ X, /, :, RETURN (internal numbers).
+.stick_keys     EQUB &61, &42, &68, &48, &49
+.stick_bits     EQUB 1, 2, 4, 8, 16
+\ The original's table (51991-52279): for each value of the half-row, the
+\ direction and 16 * fire, or &FF where the original sets nothing.
+.stick_table
+    EQUB &FF, &FF, &FF, &FF, &FF, &12, &18, &11, &FF, &14, &16, &15, &FF, &13, &17, &10
+    EQUB &FF, &FF, &FF, &FF, &FF, &02, &08, &01, &FF, &04, &06, &05, &FF, &03, &07, &00
+
+\ 50350, 50369, 42140: the game over's, the menu's and the ending's texts,
+\ in the panel font from CHAN-OPEN 2; CHARS after the ROM's (50775), or
+\ for the ending's what it found.
+.usr_game_over
+    LDA #LO(50388) : LDX #HI(50388) : LDY #162 : JSR text
+    JMP chars_rom
+.usr_menu
+    LDA #LO(50550) : LDX #HI(50550) : LDY #212 : JSR text
+    JMP chars_rom
+.usr_end
+    LDA #LO(42169) : LDX #HI(42169) : LDY #111
+.text
+{
+    STA acc : STX acc+1 : STY arg
+    LDA chars : PHA : LDA chars+1 : PHA
+    JSR chars_panel
+    JSR print_temps
+    JSR vm_xlat
+.byte
+    JSR page_logic
+    LDY #0 : LDA (eptr),Y : PHA
+    JSR page_data
+    PLA : JSR print_out
+    INC eptr : BNE same : INC eptr+1
+.same
+    DEC arg : BNE byte
+    PLA : STA chars+1 : PLA : STA chars
+    RTS
+}

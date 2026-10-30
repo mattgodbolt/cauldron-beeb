@@ -38,19 +38,29 @@ TARGET   = build/cauldron.ssd
 DISC     = cauldron.ssd
 SOURCES  = $(wildcard src/*.6502)
 # Made from the original by the tools, never committed (original/README.md).
-GENERATED = build/data/title.bin build/data/landmap.bin
+GENERATED = build/data/title.bin build/data/landmap.bin build/logic.6502
+VIEWER   = build/viewer.ssd
 # Stamped into !BOOT, so a disc says what it is: UTC build time and the
 # commit, with + if the tree had changes.
-BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' 2>/dev/null || echo +)
+BUILD   := $(shell date -u '+%Y-%m-%d %H:%M UTC') $(shell git rev-parse --short HEAD 2>/dev/null || echo NOGIT)$(shell git diff --quiet HEAD -- . ':(exclude)$(DISC)' ':(exclude)viewer.ssd' 2>/dev/null || echo +)
 
 .DELETE_ON_ERROR:
 .PHONY: all run check vm draw sprites splits disc fetch zx disasm venv clean
 
-all: $(TARGET)
+all: $(TARGET) $(VIEWER)
 
 $(TARGET): $(SOURCES) $(GENERATED) | build
 	@python3 tools/lint_labels.py > /dev/null || python3 tools/lint_labels.py
 	$(ASM) -D 'BUILD="$(BUILD)"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) -v -log0 build/listing.txt src/main.6502
+
+# The viewer: the same program with -D VIEWER=1, stepping through the
+# scenes for the drawing's checks instead of playing.
+$(VIEWER): $(SOURCES) $(GENERATED) | build
+	$(ASM) -D VIEWER=1 -D 'BUILD="$(BUILD) viewer"' -o $@ --title CAULDRON --opt 3 --warn 2 --symbols $(@:.ssd=.json) src/main.6502
+
+# The original's BASIC, compiled for the interpreter (decision 10).
+build/logic.6502: build/cauldron.z80 tools/bas2vm.py tools/decompile.py tools/decompile_names.py
+	$(PYTHON) tools/bas2vm.py
 
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
 	python3 tools/mkscreen.py $< $@
@@ -62,7 +72,7 @@ vm: build/cauldron.z80
 
 # SPRITE against the original's on random cases (tools/spritecases.py:
 # the attributes exactly, the pixels by decision 5's model of it).
-sprites: $(TARGET) build/sprite/seed1.json
+sprites: $(VIEWER) build/sprite/seed1.json
 	node tools/spritecheck.mjs
 	$(PYTHON) tools/spritecases.py cmp
 
@@ -72,10 +82,10 @@ build/sprite/seed1.json: build/cauldron.z80 tools/spritecases.py
 
 # The palette splits where the build puts them (decision 4): the panel's
 # rows in their colours, no pixel wrong.
-splits: $(TARGET)
+splits: $(VIEWER)
 	python3 tools/splitsweep.py $$(sed -n 's/^    SPLIT_ADJ = \([0-9]*\)$$/\1/p' src/irq.6502) 1000 1000 --check
 
-draw: $(TARGET) build/zxscenes/room_63.scr
+draw: $(VIEWER) build/zxscenes/room_63.scr
 	node tools/drawcheck.mjs
 	$(PYTHON) tools/drawcmp.py
 
@@ -85,10 +95,11 @@ build/zxscenes/room_63.scr: build/cauldron.z80 tools/zxscene.py
 
 # Always from a clean tree, so the stamp names the commit the disc holds.
 disc:
-	@git diff --quiet HEAD -- . ':(exclude)$(DISC)' || { echo "commit first: the stamp would say +"; exit 1; }
-	rm -f $(TARGET)
-	$(MAKE) $(TARGET)
+	@git diff --quiet HEAD -- . ':(exclude)$(DISC)' ':(exclude)viewer.ssd' || { echo "commit first: the stamp would say +"; exit 1; }
+	rm -f $(TARGET) $(VIEWER)
+	$(MAKE) $(TARGET) $(VIEWER)
 	cp $(TARGET) $(DISC)
+	cp $(VIEWER) viewer.ssd
 
 # The original's tables and the colour maps (decision 3).
 build/data/landmap.bin: build/cauldron.z80 tools/mkdata.py tools/colourstudy.py tools/zxgfx.py

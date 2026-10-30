@@ -33,6 +33,9 @@ and the colour (decisions 3 and 4), from tools/colourstudy.py's counts:
     sprites.bin    the sprite graphics' regions (SPRITE_REGIONS), one after
                    another: SPRITE takes the original's addresses, and
                    src/sprite.6502 finds each in its region
+    logictab.bin   the tables the BASIC PEEKs and POKEs (LOGIC_REGIONS),
+                   one after another: src/vmxlat.6502 finds each
+    romfont.bin    the Spectrum ROM's font, for PRINT with CHARS 15360
     bandmaps.bin   the fixed bands' maps, 8 bytes each: the panel's rows
                    0-3, then the sky (decision 4's split layout)
 """
@@ -45,6 +48,15 @@ from colourstudy import best3, ink_counts, land_cells, room_cells  # noqa: E402
 from zxgfx import LAND_COLS, LAND_MAP, LAND_SCREENS, ROOMS, BLOCKS, load  # noqa: E402
 
 UNDER_GLYPHS = 59330
+# The tables the compiled BASIC reads and writes by address (measured in
+# play, tools/zxaccess.py; docs/research/data.md), as (first, last + 1):
+# PRINT's strings and the small tables; the object types and the room
+# records; the rooms' entry places and exits; the data among the
+# landscape's machine code (the start's room list at 56920). With them,
+# what the USR routines the port transcribes read: the ending's, the game
+# over's and the menu's texts, and the moon's attributes.
+LOGIC_REGIONS = [(41575, 41732), (42169, 42274), (42274, 43589), (45320, 45704), (50388, 50762),
+                 (52820, 52850), (56900, 57310)]
 # The sprite graphics (docs/research/data.md), as (first, last + 1): the
 # shots; the skeleton and its set; the witch on foot to the pumpkins
 # (the code among them comes along); the last set.
@@ -125,7 +137,20 @@ def main():
     write("underfont.bin", m[UNDER_GLYPHS:UNDER_GLYPHS + 8 * 96])
     write("panelfont.bin", m[PANEL_GLYPHS:PANEL_GLYPHS + 8 * 96])
     write("scenery.bin", m[SCENERY:SCENERY_END])
+    write("logictab.bin", [b for a, e in LOGIC_REGIONS for b in m[a:e]])
+    # ... and where each region starts in it, for src/vmxlat.6502.
+    with open(os.path.join(args.out, "logicmap.6502"), "w") as f:
+        f.write("\\ Made by tools/mkdata.py: LOGIC_REGIONS, and where each starts in logictab.\n")
+        f.write("LT_FROM = {" + ", ".join(str(a) for a, _ in LOGIC_REGIONS) + "}\n")
+        f.write("LT_TO = {" + ", ".join(str(e) for _, e in LOGIC_REGIONS) + "}\n")
+        starts, at = [], 0
+        for a, e in LOGIC_REGIONS:
+            starts.append(at)
+            at += e - a
+        f.write("LT_AT = {" + ", ".join(map(str, starts)) + "}\n")
+        f.write(f"LT_REGIONS = {len(LOGIC_REGIONS)}\n")
     write("sprites.bin", [b for a, e in SPRITE_REGIONS for b in m[a:e]])
+    write("romfont.bin", m[15616:16384])             # the ROM's font, CHARS 15360: glyph c at 8c - 256
     write("bandmaps.bin", [b for band in PANEL_ROWS + [SKY] for b in nearest_map(band)])
     for name, units in (("landpal.bin", [land_cells(m, k) for k in range(LAND_SCREENS)]),
                         ("roompal.bin", [room_cells(m, r) for r in range(64)])):

@@ -207,3 +207,20 @@ fuse common sequences of operations.
 
 The variables keep the original's layout, so the port's and the
 original's can be compared word for word, pass by pass.
+
+## 11. Two sideways RAM banks, for now (2026-10-30, provisional)
+
+The game now needs two banks: the drawing's data (CAULDAT: the fonts,
+the landscape, the rooms) in one, the compiled BASIC and its tables
+(CAULLOG) in the other, with the code, the interpreter and the sprites
+in main RAM. That is a Model B with 32K of sideways RAM, or a Master.
+Decision 1's target was 16K: it doesn't fit as things stand (the
+build's `PRINT`s give each part), and fitting it is part of the
+optimisation Matt put off until the game works (decision 10): fusing
+the bytecode's common sequences, packing the landscape's columns and the
+colour maps, computing what tables hold now. If that falls short, the
+choice is Matt's: 32K, or a disc-streaming edition as CE2S was.
+
+LOADER fills the banks before CAULDRN loads (it stages each file where
+CAULDRN will load), and the interpreter keeps the logic's bank paged in;
+whatever draws pages the data's in for the time it takes.

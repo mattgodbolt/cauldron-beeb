@@ -4,13 +4,13 @@
 // viewer's sprite_test, and the screen and attributes dumped
 // (build/sprite/bbc_NNN.bin) for `spritecases.py cmp`.
 //
-//   node tools/spritecheck.mjs [--disc build/cauldron.ssd]
+//   node tools/spritecheck.mjs [--disc build/viewer.ssd]
 import { readFileSync, writeFileSync } from "fs";
 import { startBeeb } from "./beeb.mjs";
 
 const args = process.argv.slice(2);
 const i = args.indexOf("--disc");
-const disc = i >= 0 ? args[i + 1] : "build/cauldron.ssd";
+const disc = i >= 0 ? args[i + 1] : "build/viewer.ssd";
 const cases = JSON.parse(readFileSync("build/sprite/cases.json", "utf8"));
 const b = await startBeeb({ disc, bootUntil: "shown", symbols: disc.replace(/\.ssd$/, ".json") });
 try {

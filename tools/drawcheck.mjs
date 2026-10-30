@@ -3,7 +3,7 @@
 // (each room) in the BBC viewer and dump what it drew, for
 // tools/drawcmp.py to compare with the original's (tools/zxscene.py).
 //
-//   node tools/drawcheck.mjs [--disc build/cauldron.ssd]
+//   node tools/drawcheck.mjs [--disc build/viewer.ssd]
 //
 // Writes build/bbcdraw/out_NN.bin and room_NN.bin: the 12K screen, the
 // 768 bytes of attributes (attrs), then the lower band's two colours
@@ -13,7 +13,7 @@ import { startBeeb } from "./beeb.mjs";
 
 const args = process.argv.slice(2);
 const i = args.indexOf("--disc");
-const disc = i >= 0 ? args[i + 1] : "build/cauldron.ssd";
+const disc = i >= 0 ? args[i + 1] : "build/viewer.ssd";
 mkdirSync("build/bbcdraw", { recursive: true });
 const b = await startBeeb({ disc, bootUntil: "shown", symbols: disc.replace(/\.ssd$/, ".json") });
 try {

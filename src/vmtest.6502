@@ -3,6 +3,9 @@
 INCLUDE "../build/vmops.6502"
 INCLUDE "vmzp.6502"
 attr_p = &71 : attr_t = &72 : rnd_seed = &73 : frames = &75 : prbuf = &77 : chars = &79 : stick_res = &7B
+data_bank = &7D : logic_bank = &7E
+romsel = &FE30 : romshad = &F4
+cell_scr = &60
 SECTION Test, org = &1000, filename = "T"
 .sprite RTS
     INCLUDE "vm.6502"
@@ -13,6 +16,39 @@ SECTION Test, org = &1000, filename = "T"
     INCLUDE "../build/logic.6502"
 .bytecode_end
     PRINT "bytecode ", bytecode_end - bytecode
+    INCLUDE "../build/vmjump.6502"
+.page_data
+.page_logic
+    RTS
+\ (The operations vmio.6502 does, and the screen's: not the interpreter's
+\ own, so the checks stop at them.)
+.op_bad
+.op_sprite
+.op_usr
+.op_inkey
+.op_in
+.op_attr
+.op_point
+.op_chan
+.op_out
+.op_str
+.op_num
+.op_temps
+.op_perm
+.op_cls
+.op_pause
+.op_halt
+.op_wait
+.op_beeper
+.op_beep
+.cell_at
+.vm_unbuilt
+    JMP vm_unbuilt
+.logictab   INCBIN "../build/data/logictab.bin"
+.landmap    SKIP 2016
+    ALIGN &100
+.attrs SKIP 768
+.attr_save SKIP 192
 .bv SKIP 560
 .bslots SKIP 156
 .sprite_blocks SKIP 64

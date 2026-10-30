@@ -87,6 +87,8 @@ FUNCTION t1_period(lines) = lines * SL - 2
     LDA sysvia_ifr : AND #2 : BEQ done
     STA sysvia_ifr                  ; acknowledge
     INC vsyncs
+    INC frames : BNE frames_lo : INC frames+1   ; (the Spectrum's FRAMES)
+.frames_lo
     LDA splits_on : BEQ palette
     LDA #LO(SPLIT_FIRST) : STA usrvia_t1cl
     LDA #HI(SPLIT_FIRST) : STA usrvia_t1ch     ; starts the count
@@ -147,6 +149,10 @@ NEXT
     LDX #0 : LDA #PHYS_CYAN : JSR set_split
     INX : LDA #PHYS_MAGENTA : JSR set_split
     INX : LDA #PHYS_CYAN : JSR set_split
+    LDY #3 : INX : LDA #PHYS_WHITE : JSR set_split
+    \ (and until a landscape or a room sets them, the lower band as the
+    \ sky: logical 1 black, logical 3 white)
+    LDY #1 : INX : LDA #PHYS_BLACK : JSR set_split
     LDY #3 : INX : LDA #PHYS_WHITE : JSR set_split
     RTS
 }

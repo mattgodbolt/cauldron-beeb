@@ -5,18 +5,17 @@ A work-in-progress port of *Cauldron* (Palace Software, 1985), from the
 the Master 128, from one disc.
 
 **[Run it in jsbeeb](https://bbc.xania.org/?autoboot&disc1=github:mattgodbolt/cauldron-beeb/cauldron.ssd)**
+([the drawing's viewer](https://bbc.xania.org/?autoboot&disc1=github:mattgodbolt/cauldron-beeb/viewer.ssd))
 ([on a Master](https://bbc.xania.org/?autoboot&model=Master&disc1=github:mattgodbolt/cauldron-beeb/cauldron.ssd))
 
-It is early days, and there is no game on the disc yet. It shows the
-Spectrum's loading screen in the Spectrum's 256 x 192 geometry, then on
-a key the drawing layer: **Z** and **X** step through the 61 outdoor
-scenes (the panel, the sky and a landscape screen), **SPACE** switches
-to the 64 underground rooms, each with a few sprites over it. Everything
-is drawn from the original's data in MODE 1, with palette splits for
-the panel, the sky and the landscape and a palette chosen per screen
-and per room, and checked against the original's own drawing. The
-sprites keep the original's pixels but not its colour clash. It needs
-sideways RAM (a Model B with 16K, or a Master).
+It is early days. The disc runs the original's own program, its BASIC
+compiled again for the BBC: the loading screen, then (any key) the
+menu, then **4** plays, the hag stirring the cauldron in her house and
+walking out into the night, where the bats come for her. Not all of it
+works yet: the landscape doesn't scroll, there's no sound, and the menu's
+colours are wrong. It needs 32K of sideways RAM (a Model B with two
+banks, or a Master); the keys are **Z** and **X** left and right, **:**
+and **/** up and down, **RETURN** to fire.
 
 This is an unofficial port. *Cauldron* was designed by Steve Brown; the
 Spectrum version, which this port is made from, is by Ramjam (Tony

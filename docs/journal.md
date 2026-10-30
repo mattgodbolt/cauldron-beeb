@@ -212,3 +212,25 @@ the data tables' addresses). It found a branch reading flags a load had
 replaced (NEXT), and two things of its own: statements with no bytecode
 share their label with the next, and RANDOMIZE reads FRAMES, which it
 hadn't copied.
+
+### The original's program, running
+
+With the interpreter in the game (decision 11's two banks), the
+original's BASIC runs from its entry: the start-up, the menu (its
+INKEY$ loop waiting for 1 to 4), the house (the hag walking in and
+stirring), the walk out of the door, and the main loop outdoors, bats
+and all, on the B and the Master. What it took besides: PRINT as the
+ROM's (`print.6502`: a state machine over the channel, TEMPS and PERM,
+the fonts CHARS names); the USR routines for the scenery, the room, the
+attributes' save and restore, the moon, the texts, the controls (the
+original's table for its keys, on the BBC's) and a landscape screen
+(57228); the logic's tables in their bank, the landscape map PEEKed in
+the data's, and the Spectrum's bitmap PEEKed from the port's screen.
+
+Two things the loader had wrong: the OS pages its own ROM back after
+`*RUN`, so the game pages its data bank itself; and the palette splits
+for the lower band were set only by the landscape and the rooms, so
+the menu's showed stripes.
+
+The menu's colours are the game screen's bands, which don't suit it:
+the front end's own layer will give it its own.

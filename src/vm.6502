@@ -21,6 +21,7 @@
     LDA vm_hi,X : PHA
     LDA vm_lo,X : PHA
     RTS                             ; (to op_<name>, the table holds it less 1)
+    INCLUDE "../build/vmjump.6502"
 }
 
 \ The next bytecode byte into A; the next word into vm_w.
@@ -114,27 +115,77 @@
     LDY #0 : LDA acc : STA (vm_w),Y
     JMP vm_next
 
-\ PEEK, POKE, DPEEK, DPOKE at an original address (vm_xlat).
+\ PEEK, POKE, DPEEK, DPOKE at an original address (vm_xlat): in main
+\ RAM or the logic bank, in the data bank (paged in for it), or the
+\ Spectrum's bitmap (made from the port's screen: PEEK only).
 .op_peek
+{
     JSR pop_acc : JSR vm_xlat
+    LDA xk : BNE other
     LDY #0 : LDA (eptr),Y
     JMP push_a_next
+.other
+    CMP #XK_DATA : BNE bitmap
+    JSR page_data
+    LDY #0 : LDA (eptr),Y : PHA
+    JSR page_logic
+    PLA : JMP push_a_next
+.bitmap
+    JSR bitmap_byte
+    JMP push_a_next
+}
 .op_dpeek
+{
     JSR pop_acc : JSR vm_xlat
+    LDA xk : BNE other
     LDY #0 : LDA (eptr),Y : STA acc
     INY : LDA (eptr),Y : STA acc+1
     JMP push_next
+.other
+    CMP #XK_DATA : BNE vm_bad_kind
+    JSR page_data
+    LDY #0 : LDA (eptr),Y : STA acc
+    INY : LDA (eptr),Y : STA acc+1
+    JSR page_logic
+    JMP push_next
+}
 .op_poke                            ; (the address on top, the value under it)
     JSR pop_acc : JSR vm_xlat
+    LDA xk : BNE vm_bad_kind
     JSR pop_acc
     LDY #0 : LDA acc : STA (eptr),Y
     JMP vm_next
 .op_dpoke
     JSR pop_acc : JSR vm_xlat
+    LDA xk : BNE vm_bad_kind
     JSR pop_acc
     LDY #0 : LDA acc : STA (eptr),Y
     INY : LDA acc+1 : STA (eptr),Y
     JMP vm_next
+.vm_bad_kind                        ; (global: the tests stop here)
+    JMP vm_bad_kind                 ; (a write the port's places don't take)
+
+\ A of the Spectrum's bitmap byte at acc (16384-22527): its 8 pixels' lit
+\ or not, from the port's screen, where they're the original's.
+.bitmap_byte
+{
+    \ The Spectrum's address: 010 T T L L L | R R R C C C C C (T the third,
+    \ L the line in the row, R the row in the third, C the column).
+    LDA acc+1 : AND #&18 : ASL A : ASL A : ASL A : STA bm_line  ; 64 * the third
+    LDA acc : AND #&E0 : LSR A : LSR A : ORA bm_line : STA bm_line  ; + 8 * the row
+    LDA acc+1 : AND #7 : ORA bm_line : STA bm_line              ; + the line
+    LDA acc : AND #31 : TAX
+    LDA bm_line : LSR A : LSR A : LSR A : JSR cell_at
+    LDA bm_line : AND #7 : TAY
+    LDA (cell_scr),Y : JSR lit_nibble : ASL A : ASL A : ASL A : ASL A : STA bm_line
+    TYA : ORA #8 : TAY
+    LDA (cell_scr),Y : JSR lit_nibble : ORA bm_line
+    RTS
+.lit_nibble
+    STA bm_tmp : LSR A : LSR A : LSR A : LSR A : ORA bm_tmp : AND #15
+    RTS
+}
+
 \ An array's element's address: base + 2 * (top - 1), the base the
 \ original's (the word after the opcode).
 .op_elem
@@ -160,6 +211,7 @@
     LDA acc+1 : SBC xlat_to_hi,X : BCS next
     LDA acc : CLC : ADC xlat_add_lo,X : STA eptr
     LDA acc+1 : ADC xlat_add_hi,X : STA eptr+1
+    LDA xlat_kind,X : STA xk
     RTS
 .next
     INX : CPX #XLAT_REGIONS : BNE region
@@ -170,6 +222,7 @@
     LDA acc+1 : CMP xlat_sys_hi,X : BNE no
     LDA xlat_sys_plo,X : STA eptr
     LDA xlat_sys_phi,X : STA eptr+1
+    LDA #XK_DIRECT : STA xk
     RTS
 .no
     DEX : BPL sys
@@ -297,26 +350,4 @@
 .op_rnd
     JSR pop_acc : JSR rt_rnd : JMP push_next
 
-\ --- What only the port can do: each layer brings its own ------------------
-\ (Until then, each stops where the tests can see it.)
-.op_bad
-.op_sprite
-.op_usr
-.op_inkey
-.op_in
-.op_attr
-.op_point
-.op_chan
-.op_out
-.op_str
-.op_num
-.op_temps
-.op_perm
-.op_cls
-.op_pause
-.op_halt
-.op_wait
-.op_beeper
-.op_beep
-.vm_unbuilt                         ; (global: the tests stop here)
-    JMP vm_unbuilt
+\ (The operations that do what only the port can: vmio.6502.)
