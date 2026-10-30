@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import decompile as D  # noqa: E402
-from bas2vm import BLOCKS, port_place  # noqa: E402
+from bas2vm import BLOCKS, port_place, simp  # noqa: E402
 
 
 class Unsupported(Exception):
@@ -41,15 +41,15 @@ class Native:
 
     def simple(self, e):
         """(lo, hi) operands for a constant or a word at a known place."""
-        e = D.simplify(e)
+        e = simp(e)
         if e[0] in ("n", "c8"):
             v = e[1] & 0xFFFF
             return f"#{v & 255}", f"#{v >> 8}"
-        if e[0] == "blockaddr" and D.const(D.simplify(e[1])):
-            v = BLOCKS + 8 * D.simplify(e[1])[1]
+        if e[0] == "blockaddr" and D.const(simp(e[1])):
+            v = BLOCKS + 8 * simp(e[1])[1]
             return f"#{v & 255}", f"#{v >> 8}"
-        if e[0] == "v" or (e[0] == "dpeek" and D.const(D.simplify(e[1]))):
-            a = e[1] if e[0] == "v" else D.simplify(e[1])[1]
+        if e[0] == "v" or (e[0] == "dpeek" and D.const(simp(e[1]))):
+            a = e[1] if e[0] == "v" else simp(e[1])[1]
             p, q = port_place(a), port_place(a + 1)
             if p and q:
                 return p, q
@@ -57,7 +57,7 @@ class Native:
 
     def expr(self, e):
         """acc = e."""
-        e = D.simplify(e)
+        e = simp(e)
         sm = self.simple(e)
         if sm:
             self.emit(f"LDA {sm[0]} : STA acc : LDA {sm[1]} : STA acc+1")
@@ -97,7 +97,7 @@ class Native:
         elif k == "un":
             op = e[1]
             if op == "PEEK":
-                a = D.simplify(e[2])
+                a = simp(e[2])
                 if D.const(a) and port_place(a[1]):
                     self.emit(f"LDA {port_place(a[1])} : STA acc : LDA #0 : STA acc+1")
                     return
@@ -175,7 +175,7 @@ class Native:
     # ------------------------------------------------------------ statements
 
     def store(self, dst, val, word):
-        d = D.simplify(dst)
+        d = simp(dst)
         if D.const(d):
             p = port_place(d[1])
             if p and (not word or port_place(d[1] + 1)):
@@ -201,7 +201,7 @@ class Native:
             raise Unsupported("not a plain statement")
         if all(ev[0] in ("let", "poke") for ev in evs):
             for ev in evs:
-                d = D.simplify(ev[1])
+                d = simp(ev[1])
                 if (D.const(d) and 24603 <= d[1] < 24759 and (d[1] - 24603) % 6 == 4):
                     raise Unsupported("a FOR's loop-back")
                 v = ev[2]

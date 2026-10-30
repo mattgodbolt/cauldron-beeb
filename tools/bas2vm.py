@@ -65,6 +65,37 @@ class Unsupported(Exception):
     pass
 
 
+def addr_parts(e):
+    """(base, offset): e is base + offset mod 2^16, base None if e is
+    constant (a SPRITE block's address of a constant block counts)."""
+    k = e[0]
+    if k in ("n", "c8"):
+        return None, e[1]
+    if k == "blockaddr" and D.const(D.simplify(e[1])):
+        return None, BLOCKS + 8 * D.simplify(e[1])[1]
+    if k == "bin" and e[1] in ("+", "-"):
+        lb, lo = addr_parts(D.simplify(e[2]))
+        rb, ro = addr_parts(D.simplify(e[3]))
+        if rb is None:
+            return lb, lo + ro if e[1] == "+" else lo - ro
+        if lb is None and e[1] == "+":
+            return rb, lo + ro
+    return e, 0
+
+
+def simp(e):
+    """D.simplify, then constant offsets folded through + and - chains
+    (blockaddr(n)+1+1 is one constant): exact, as + and - are mod 2^16."""
+    e = D.simplify(e)
+    base, off = addr_parts(e)
+    off &= 0xFFFF
+    if base is None:
+        return ("n", off)
+    if base is e:
+        return e
+    return base if off == 0 else ("bin", "+", base, ("n", off))
+
+
 def port_place(a):
     """The port's address (an assembler expression) for the original's
     constant address a, or None if only the run-time translation knows."""
@@ -164,7 +195,7 @@ class Compiler:
         self.op("ldw", p, push=1)
 
     def expr(self, e):
-        e = D.simplify(e)
+        e = simp(e)
         k = e[0]
         if k == "n":
             self.push_const(e[1])
@@ -175,8 +206,8 @@ class Compiler:
         elif k == "elemaddr":
             self.expr(e[2])
             self.op("elem", str(e[1]), pop=1, push=1)
-        elif k == "blockaddr" and D.const(D.simplify(e[1])):
-            self.push_const(BLOCKS + 8 * D.simplify(e[1])[1])
+        elif k == "blockaddr" and D.const(simp(e[1])):
+            self.push_const(BLOCKS + 8 * simp(e[1])[1])
         elif k == "blockaddr":
             self.expr(e[1])
             self.push_const(8)
@@ -184,7 +215,7 @@ class Compiler:
             self.push_const(BLOCKS)
             self.op("add", pop=2, push=1)
         elif k == "dpeek":
-            a = D.simplify(e[1])
+            a = simp(e[1])
             if D.const(a):
                 self.load_word(a[1])
             else:
@@ -203,7 +234,7 @@ class Compiler:
         elif k == "un":
             op = e[1]
             if op == "PEEK":
-                a = D.simplify(e[2])
+                a = simp(e[2])
                 if D.const(a) and port_place(a[1]):
                     self.op("ldb", port_place(a[1]), push=1)
                     return
@@ -235,7 +266,7 @@ class Compiler:
     # --------------------------------------------------------------- statements
 
     def store(self, dst, val, word):
-        d = D.simplify(dst)
+        d = simp(dst)
         if D.const(d):
             a = d[1]
             if word and VARS <= a < VARS_END and (a - VARS) % 2 == 0:
@@ -255,7 +286,7 @@ class Compiler:
     def event(self, ev):
         k = ev[0]
         if k == "let":
-            d = D.simplify(ev[1])
+            d = simp(ev[1])
             # A FOR's limit, step and loop-back address: the last is the
             # statement after, as the port's label.
             if (D.const(d) and SLOTS <= d[1] < SLOTS_END and (d[1] - SLOTS) % 6 == 4
@@ -279,7 +310,7 @@ class Compiler:
             self.expr(ev[1])
             self.op("drop", pop=1)
         elif k == "sprite":
-            blk = D.in_block(D.simplify(ev[1]))
+            blk = D.in_block(simp(ev[1]))
             if not blk or blk[1]:
                 raise Unsupported("sprite block")
             self.expr(blk[0][1])
@@ -365,7 +396,7 @@ class Compiler:
         for s in self.dec.stmts:
             for ev in getattr(s, "events", None) or []:
                 if ev[0] == "let":
-                    d = D.simplify(ev[1])
+                    d = simp(ev[1])
                     if (D.const(d) and SLOTS <= d[1] < SLOTS_END and (d[1] - SLOTS) % 6 == 4
                             and ev[2][0] == "n" and ev[2][1] == s.end and s.end in nexts):
                         self.empty_loops.add(s.end)

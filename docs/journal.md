@@ -360,3 +360,16 @@ bytecode. Lit pixels and `attrs` were right throughout, which is all
 data bank is always paged; so nothing saw it. `op_sprite` pages the data
 bank around the call now. The checks still compare no colours in play: a
 gap.
+
+### Constant addresses folded; more native statements
+
+Three brainstorming agents looked for changes of approach (SPRITE's
+data and loop, what gets drawn and when, the logic); their plans are in
+`docs/speed.md`. The cheapest first: `+` and `-` chains with constant
+offsets fold into one constant (`simp` in `tools/bas2vm.py`, used by
+`bas2native.py` too), so a SPRITE SET's field stores (`blockaddr(n)+1+1`)
+are single STB/STW, mod 2^16 as the original's adds are. That freed
+enough of the logic bank for 130 native statements (`NATIVE`). A pass in
+flight: about 264K cycles median (5 frames is 200K). `tools/sample.mjs`
+charges code in the sideways window to the last label below it
+(`no_ram_end`): that's the native statements.
