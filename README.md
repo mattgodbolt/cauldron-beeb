@@ -9,11 +9,14 @@ the Master 128, from one disc.
 
 It is early days, and there is no game on the disc yet. It shows the
 Spectrum's loading screen in the Spectrum's 256 x 192 geometry, then on
-a key the drawing layer: **Z** and **X** step through the landscape's 61
-screens, **SPACE** switches to the 64 underground rooms. Each is drawn
-from the original's data in MODE 1, with a palette chosen per screen
-and per room, and checked byte for byte against the original's own
-drawing. It needs sideways RAM (a Model B with 16K, or a Master).
+a key the drawing layer: **Z** and **X** step through the 61 outdoor
+scenes (the panel, the sky and a landscape screen), **SPACE** switches
+to the 64 underground rooms, each with a few sprites over it. Everything
+is drawn from the original's data in MODE 1, with palette splits for
+the panel, the sky and the landscape and a palette chosen per screen
+and per room, and checked against the original's own drawing. The
+sprites keep the original's pixels but not its colour clash. It needs
+sideways RAM (a Model B with 16K, or a Master).
 
 This is an unofficial port. *Cauldron* was designed by Steve Brown; the
 Spectrum version, which this port is made from, is by Ramjam (Tony
