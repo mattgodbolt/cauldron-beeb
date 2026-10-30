@@ -142,3 +142,34 @@ lit pixels, coloured by the rule above.
 What it can get wrong: where two sprites overlap and one is erased, the
 other's pixels that come back take the erasing call's colour (outdoors,
 the erase's ATTR_T is white).
+
+## 6. The pace: a fixed pass length (Matt, 2026-10-30)
+
+The original has no frame sync: a pass of its main loop takes as long as
+a 3.5MHz Z80 took over it, 4-8 frames, slower with more sprites
+(`runtime.md`: medians 5.25 frames standing and 7.77 firing outdoors,
+3.92 underground). A BBC running flat out would run at its own speed.
+The port waits for VSync to start each pass at a fixed length from the
+original's medians: 5 frames above ground, 4 below. To tune against the
+original's play once the game runs; a pass that overruns starts the
+next at once.
+
+## 7. The push scroll at the original's pace (Matt, 2026-10-30)
+
+The push (32 steps, the game stopped, `graphics.md`) stays as the
+original's design, a step every 2.3 frames as measured; on the BBC a
+step on VSync, alternating 2 and 3 frames. Hardware scrolling can't move
+a third of the screen alone.
+
+## 8. Sound: the chirps as tones (Matt, 2026-10-30)
+
+BEEPER's chirps become SN76489 tones at BEEPER's pitches, a tone a step
+at the step's length, with the game stopped while they play, as the
+original's is. The menu's click is a short tone.
+
+## 9. Controls (Matt, 2026-10-30)
+
+The original reads Kempston, Sinclair II or the keys CAPS SHIFT to V.
+The port's keys are Z, X, :, / and RETURN by default (which does what is
+set when the controls are transcribed), redefinable, and an analogue
+joystick.

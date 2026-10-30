@@ -150,7 +150,9 @@ Taken, provisionally (`decisions.md`): **1** the original is Palace's
 TAP; **2** MODE 1 in the Spectrum's geometry; **3** a palette per band,
 per screen and per room.
 
-Still open, with a recommendation:
+Matt took the recommendations below (2026-10-30): decisions 6-9.
+
+Open until then, with a recommendation:
 
 - **D4. The pace.** The original has no frame sync, so its speed is how
   long each pass took a 3.5MHz Z80: 4-8 frames. A BBC running flat out
