@@ -418,3 +418,12 @@ pace (`vm_pass_due`, the test disc's), and the original's passes were
 timed the same way: docs/speed.md has the table. The port's work is
 under the original's pass in every run measured, standing, flying and
 firing; decision 6's fixed 5 frames is what holds it back in flight.
+
+### The pace kept; the README's screenshots
+
+Matt kept decision 6's fixed 5 frames: the port, faster than the
+original in flight, holds its pace where the original slows. The README
+now has screenshots of the port (`docs/images/`, cropped to the
+Spectrum's geometry from `tools/play.mjs`'s) and says what plays.
+`tools/beepass.mjs` takes `BEEPASS_SHOTS=n,m` to screenshot those
+passes of each scenario it plays.

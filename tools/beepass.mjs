@@ -7,7 +7,8 @@
 // As tools/zxpass.py does on the original: RND's seed set just after
 // RANDOMIZE (statement 25606), 4 held until the house (26691), then at
 // each pass (op_pass's vm_pass) the variables (bv) noted and the pass's
-// keys held. Writes build/passes/<name>.bbc.json.
+// keys held. Writes build/passes/<name>.bbc.json. BEEPASS_SHOTS=10,40
+// also screenshots those passes, to shots/pass_<name>_<n>.png.
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { startBeeb } from "./beeb.mjs";
 
@@ -38,6 +39,7 @@ function scenarios() {
 }
 
 const want = process.argv.slice(2);
+const shots = (process.env.BEEPASS_SHOTS ?? "").split(",").filter(Boolean).map(Number);
 mkdirSync("build/passes", { recursive: true });
 for (const [name, { seed, passes }] of Object.entries(scenarios())) {
     if (want.length && !want.includes(name)) continue;
@@ -82,6 +84,7 @@ for (const [name, { seed, passes }] of Object.entries(scenarios())) {
             blocks.push(Buffer.from(await b.read("bv", VARS_LEN)).toString("hex"));
             if ((blocks.length - 1) % 10 === 0)      // (tools/zxpass.py's SCREEN_EVERY)
                 screens.push(Buffer.from([...await b.read(0x5000, 0x3000), ...await b.read("attrs", 768)]).toString("hex"));
+            if (shots.includes(blocks.length - 1)) await b.shot(`shots/pass_${name}_${blocks.length - 1}.png`);
             for (const k of held) await b.keyUp(KEYS[k]);
             held = [...keys];
             for (const k of held) await b.keyDown(KEYS[k]);

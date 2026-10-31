@@ -176,6 +176,13 @@ original's medians: 5 frames above ground, 4 below. To tune against the
 original's play once the game runs; a pass that overruns starts the
 next at once.
 
+Kept (Matt, 2026-10-30), with the port's work a pass under the
+original's in every run measured (`docs/speed.md`): where the original
+slows to 6-8 frames in flight and firing, the port holds 5. The other
+options were to follow the original's slowdown, pacing each pass to
+what the original would take, or to go below 5 frames for a game
+quicker than the original throughout.
+
 ## 7. The push scroll at the original's pace (Matt, 2026-10-30)
 
 The push (32 steps, the game stopped, `graphics.md`) stays as the
