@@ -100,6 +100,7 @@ chirps stop the game while they play, as the original's do (decision
 8). Printing the score's divides now skip a small dividend's empty top
 byte.
 
-Pass times vary from build to build with the monsters RND brings, since
-a pass's timing moves the seed; compare builds on the same profile run,
-not on single passtime runs.
+Single passtime runs of different builds can meet different monsters
+(standing measured 141K before these steps and 147K after, though
+none of them touches standing's costs), so compare builds on the same
+profile run instead.
