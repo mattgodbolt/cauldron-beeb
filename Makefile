@@ -18,8 +18,9 @@
 #                 (tools/bas2vm.py, src/vm.6502, tools/vmcheck.py)
 #   make sprites  SPRITE on random cases against the original's
 #                 (tools/spritecases.py, tools/spritecheck.mjs)
-#   make splits   the palette splits' timing, the panel's rows checked in a
-#                 screenshot (tools/splitsweep.py, decision 4)
+#   make splits   the palette splits' timing, the panel's rows and the
+#                 title checked in screenshots (tools/splitsweep.py,
+#                 decisions 4 and 13)
 #   make disc     rebuild from a clean tree and copy the disc to
 #                 cauldron.ssd, which the README links
 #   make fetch    download the Spectrum original into original/
@@ -80,8 +81,10 @@ build/logic.6502: build/native.cfg build/cauldron.z80 build/hot.json tools/bas2v
 build/hot.json: build/cauldron.z80 tools/zxhot.py tests/scenarios.txt
 	$(PYTHON) tools/zxhot.py
 
+# (and title.6502, its palette and splits; title.png, the picture make
+# splits holds the BBC's to)
 build/data/title.bin: original/Cauldron.scr tools/mkscreen.py
-	python3 tools/mkscreen.py $< $@
+	$(PYTHON) tools/mkscreen.py $< $@ --png $(@:.bin=.png)
 
 check: vm passes draw sprites splits
 
@@ -106,7 +109,7 @@ build/sprite/seed1.json: build/cauldron.z80 tools/spritecases.py
 	cp build/sprite/cases.json $@
 
 # The palette splits where the build puts them (decision 4): the panel's
-# rows in their colours, no pixel wrong.
+# rows in their colours, and the title's (decision 13), no pixel wrong.
 splits: $(VIEWER)
 	python3 tools/splitsweep.py $$(sed -n 's/^    SPLIT_ADJ = \([0-9]*\)$$/\1/p' src/irq.6502) 1000 1000 --check
 

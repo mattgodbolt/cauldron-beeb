@@ -442,3 +442,33 @@ most rows aren't shifted at all, so `seg_row`'s cost was its call and
 loop per row: it now does a segment's rows in one call, the graphic's
 index running on through them. The late passes' median work fell by
 about a tenth.
+
+### The title in its colours
+
+Matt saw the title lose detail: the witch had no hair. The first
+conversion (`tools/mkscreen.py`, a look at the geometry) kept the four
+commonest colours for the whole screen and drew green and cyan as the
+nearest of black, red, magenta and yellow by RGB, which was black: the
+hair, the cauldron's rim and its feet lit but invisible. Counted line
+by line, no line of the original shows more than four inks, and only
+two show four, each with a lone pixel of the fourth. So the title now
+has a palette a line (decision 13): the converter chooses the fewest
+splits that show every pixel but those two in its own colour, one
+logical colour a split as the game's, each moved to the middle of the
+lines where nothing shows the colour it changes. It writes them as
+`build/data/title.6502`, which `title_colours` sets up in place of the
+one palette.
+
+The game's T1 periods were a table in the code; they are now
+`split_latch`, in the workspace, filled from `game_latch` or the
+title's `title_latch`, and VSync takes the first from it too. The
+splits' timing is unchanged (`SPLIT_FIRST` is still immediate). `make
+splits` now screenshots the title before the panel and holds it to the
+converter's picture, every pixel: clean on the B and the Master, and
+swept clean over the game's whole window.
+
+The longer code found a bug in the viewer: it never cleared PRINT's
+flags (`p_flag`, `mask_p`, `mask_t`), which the game's start does, so
+they held whatever bytes of CAULDRN's file had loaded there. With the
+code moved on, `p_flag` came up INVERSE and the viewer stopped at
+`print_bad` on its first scene. It clears them now.

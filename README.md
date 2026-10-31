@@ -37,7 +37,8 @@ screen is MODE 1 laid out in the Spectrum's geometry, its lit pixels
 exactly the original's at all times, and a sprite keeps its own colour
 except where it crosses scenery, which keeps the scenery's. Palette
 changes partway down the screen give each band of it the colours the
-original's attributes asked for.
+original's attributes asked for. The loading screen has its own, line
+by line, so the witch keeps her green and cyan hair (decision 13).
 
 ## The original's program, compiled again
 

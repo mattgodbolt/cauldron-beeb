@@ -12,6 +12,9 @@ K_X     = &42
 
 .viewer
     LDA #0 : STA view_kind : STA view_num
+    \ PRINT's flags as the game's start sets them: the workspace holds
+    \ whatever CAULDRN's file left there.
+    STA mask_p : STA mask_t : STA p_flag
 .viewer_draw
 {
     LDA view_kind : STA view_shown

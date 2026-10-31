@@ -58,8 +58,11 @@ ENDIF
 SPLIT_FIRST = 83 * SL + SPLIT_ADJ - 8 * SL
 \ The periods between splits (a VIA timer counts its latch + 2).
 FUNCTION t1_period(lines) = lines * SL - 2
-\ Split k latches the period from split k + 1 to k + 2.
-.split_latch
+\ The game's, for split_latch: VSync latches the period from split 0 to
+\ 1, and split k the one from k + 1 to k + 2. (The title has its own,
+\ title_latch.)
+.game_latch
+    EQUW t1_period(8)                   ; 0 to 1: row 1 to row 2
     EQUW t1_period(8)                   ; 1 to 2: row 2 to row 3
     EQUW t1_period(SPLIT_L3_LINE)       ; 2 to 3
     EQUW t1_period(8 - SPLIT_L3_LINE)   ; 3 to 4: to row 4
@@ -78,8 +81,8 @@ FUNCTION t1_period(lines) = lines * SL - 2
     LDA split_ula+2,X : STA ula_pal
     LDA split_ula+3,X : STA ula_pal
     TXA : LSR A : TAX               ; (4 * the split: 2 * it indexes split_latch)
-    LDA split_latch,X : STA usrvia_t1ll
-    LDA split_latch+1,X : STA usrvia_t1lh
+    LDA split_latch+2,X : STA usrvia_t1ll
+    LDA split_latch+3,X : STA usrvia_t1lh
     LDA irq_split : CLC : ADC #4 : STA irq_split
     BNE done                        ; (always)
     ZA_UNREACHABLE
@@ -92,8 +95,8 @@ FUNCTION t1_period(lines) = lines * SL - 2
     LDA splits_on : BEQ palette
     LDA #LO(SPLIT_FIRST) : STA usrvia_t1cl
     LDA #HI(SPLIT_FIRST) : STA usrvia_t1ch     ; starts the count
-    LDA #LO(t1_period(8)) : STA usrvia_t1ll    ; ... then from split 0 to 1
-    LDA #HI(t1_period(8)) : STA usrvia_t1lh
+    LDA split_latch : STA usrvia_t1ll          ; ... then from split 0 to 1
+    LDA split_latch+1 : STA usrvia_t1lh
 .palette
     LDX #15
 .entries
@@ -144,6 +147,10 @@ NEXT
 .frame
     LDA vsync_ula,X : STA frame_ula,X
     DEX : BPL frame
+    LDX #2 * (SPLITS + 1) - 1
+.latch
+    LDA game_latch,X : STA split_latch,X
+    DEX : BPL latch
     LDA #1 : STA splits_on
     LDY #2
     LDX #0 : LDA #PHYS_CYAN : JSR set_split
@@ -207,18 +214,28 @@ NEXT
 .no_menu
     RTS
 
-\ Without splits (the title): logical colours 0-3 show the physical
-\ colours at palette_phys, all sixteen entries in frame_ula.
-.set_palette
+\ The title's colours (decision 13): tools/mkscreen.py's palette at
+\ VSync (title_phys) and its splits down the screen, one logical colour
+\ each. (Its split 0 lands where the game's does, SPLIT_FIRST.)
+.title_colours
 {
-    LDA #0 : STA splits_on
     LDY #15
 .entry
     LDX entry_logical,Y
     TYA : ASL A : ASL A : ASL A : ASL A
-    ORA palette_phys,X : EOR #7
+    ORA title_phys,X : EOR #7
     STA frame_ula,Y
     DEY : BPL entry
+    LDX #TITLE_SPLITS - 1
+.split
+    LDY title_logical,X : LDA title_colour,X
+    JSR set_split
+    DEX : BPL split
+    LDX #2 * (TITLE_SPLITS + 1) - 1
+.latch
+    LDA title_latch,X : STA split_latch,X
+    DEX : BPL latch
+    LDA #1 : STA splits_on
     RTS
 }
 .entry_logical
