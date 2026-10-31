@@ -86,6 +86,12 @@
 .divide
     LDA #0 : STA arg : STA arg+1        ; the remainder
     LDX #16
+    \ A dividend below 256: its top 8 steps would shift in zeros and
+    \ subtract nothing, so start 8 on.
+    LDA mul_b+1 : BNE bit
+    LDA mul_b : STA mul_b+1
+    LDA #0 : STA mul_b
+    LDX #8
 .bit
     ASL mul_b : ROL mul_b+1             ; the dividend's next bit into the remainder
     ROL arg : ROL arg+1
