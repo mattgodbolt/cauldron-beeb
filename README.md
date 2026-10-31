@@ -8,9 +8,9 @@ the Master 128, from one disc.
 ([the drawing's viewer](https://bbc.xania.org/?autoboot&disc1=github:mattgodbolt/cauldron-beeb/viewer.ssd))
 ([on a Master](https://bbc.xania.org/?autoboot&model=Master&disc1=github:mattgodbolt/cauldron-beeb/cauldron.ssd))
 
-![The title screen](docs/images/title.png) ![The menu](docs/images/menu.png)
-![The hag's house](docs/images/cauldron.png) ![The cottage, and the bats](docs/images/cottage.png)
-![Flying over the forest](docs/images/flying.png) ![A door, with the keys](docs/images/door.png)
+![The title screen](docs/images/title.png) ![The hag's house](docs/images/cauldron.png)
+![The cottage, and the bats](docs/images/cottage.png) ![Flying over the forest](docs/images/flying.png)
+![A door, with the keys](docs/images/door.png) ![Underground](docs/images/underground.png)
 
 *Cauldron* puts you on a witch's broomstick over a moonlit landscape of
 forests and hills, fending off bats, ghosts and the rest with her
@@ -18,8 +18,8 @@ magic, finding the keys that open the doors in the hills and the
 ingredients for the spell that will deal with the Pumpkin. The port
 is a work in progress, but it plays: the loading screen, the menu
 (**4** plays), the hag in her house, then out into the night, flying,
-firing, the landscape pushing on from screen to screen, the doors, and
-BEEPER's chirps as SN76489 tones.
+firing, the landscape pushing on from screen to screen, the doors to the
+caverns underground, and BEEPER's chirps as SN76489 tones.
 
 The keys are **Z** and **X** for left and right, **:** and **/** for up
 and down, and **RETURN** to fire. (In jsbeeb on a PC keyboard, **:** is

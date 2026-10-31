@@ -426,4 +426,6 @@ original in flight, holds its pace where the original slows. The README
 now has screenshots of the port (`docs/images/`, cropped to the
 Spectrum's geometry from `tools/play.mjs`'s) and says what plays.
 `tools/beepass.mjs` takes `BEEPASS_SHOTS=n,m` to screenshot those
-passes of each scenario it plays.
+passes of each scenario it plays: the main loop's outdoors, so a door
+scenario's shots never show the caverns (the underground has its own
+loop). Breaking at `underground` (35524) on the test disc shows them.
