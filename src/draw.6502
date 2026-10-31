@@ -140,14 +140,11 @@ ENDIF
 .any
     ORA (glyph),Y
     DEY : BPL any
-    TAX : BEQ blank
-    JMP note_cell
-.blank
-    LDA glyph : PHA : LDA glyph+1 : PHA
+    TAX : BNE noted
+    \ (glyph is left so: every caller sets it afresh for each cell)
     LDA #LO(blank_glyph) : STA glyph : LDA #HI(blank_glyph) : STA glyph+1
-    JSR note_cell
-    PLA : STA glyph+1 : PLA : STA glyph
-    RTS
+.noted
+    JMP note_cell
 }
 
 \ Clear screen rows A to 23 to logical colour 0, and their cells' scenery.

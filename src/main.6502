@@ -200,7 +200,7 @@ ENDIF
     LDA #0 : STA test_n
     LDA #1 : STA view_sprites
     JSR init_cmaps
-    JSR set_palette
+    JSR title_colours
     JSR wait_vsync
     LDA #8 : STA crtc_reg : LDA #0 : STA crtc_data     ; the picture on
 }
@@ -261,9 +261,10 @@ ENDIF
 \ The sprite graphics (tools/mkdata.py's regions), in main RAM.
 .sprites        INCBIN "../build/data/sprites.bin"
     ASSERT P% - sprites = SPR_BYTES
-\ The loading screen's four colours (tools/mkscreen.py picks them).
-.palette_phys
-    INCBIN "../build/data/title_pal.bin"
+\ The loading screen's colours, a palette a line (tools/mkscreen.py
+\ picks them, decision 13).
+    INCLUDE "../build/data/title.6502"
+    ASSERT TITLE_SPLITS <= SPLITS   ; (the splits' tables are SPLITS long)
 .code_end
     ENDSECTION
 .payload_end
@@ -307,6 +308,7 @@ SECTION Work, org = code_end, guard = screen, virtual = TRUE
 .sprite_blocks  SKIP 8 * 8      ; SPRITE's parameter blocks (the original's 24759)
 .frame_ula      SKIP 16         ; the palette VSync writes (irq.6502)
 .split_ula      SKIP 4 * SPLITS ; each split's four writes
+.split_latch    SKIP 2 * (SPLITS + 1)   ; T1's periods (game_latch, title_latch)
 .cmaps          SKIP 6 * 8      ; the bands' colour maps (draw.6502)
 .row_map        SKIP 24
     ALIGN &100

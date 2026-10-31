@@ -110,7 +110,8 @@ The front end has a layout of its own (2026-10-30, Matt saw the menu's
 fourth option vanish in the game screen's bands): logical 1 green, 2
 magenta, 3 yellow, logical 2 cyan from row 4, one map for every row,
 the original menu's colours exactly (`menu_colours`, from 50369's
-text; the game's come back with its scenery).
+text; the game's come back with its scenery). So has the title, with
+splits of its own (decision 13).
 
 ## 5. No colour clash (Matt, 2026-10-30)
 
@@ -264,3 +265,55 @@ would eat the BBC's pass. So an empty loop's NEXT (the compiler finds
 them: a FOR whose loop-back is the NEXT itself) runs the loop to its end
 at once: the variable and the FOR slot end as the original's do, which
 `make passes` compares, and no time passes.
+
+## 13. The title: a palette for every line (2026-10-30, provisional)
+
+The loading screen (`original/Cauldron.scr`) has six colours on black:
+yellow, red, magenta, green, cyan and a little white, its paper black
+but for the yellow cells of CAULDRON. The first conversion kept the four
+commonest Spectrum colours (black, yellow, red, magenta) for the whole
+screen and drew the rest as the nearest of them by RGB, which for green
+and cyan is black: the witch's hair, the cauldron's rim and its feet
+went dark (Matt saw the hair missing). The title shows from `start`
+until a key, with the game's interrupt already running, so the splits
+the game screen uses (decision 4) cost nothing there.
+
+What each choice keeps, counted on the original's pixels (2026-10-30;
+6158 of its pixels are lit, black aside):
+
+| | Lit pixels in their own colour | What it costs |
+|---|---|---|
+| One palette, the commonest four (as it was) | 5007 (81.3%) | green and cyan shown black: 1137 lit pixels lost |
+| One palette, the best three inks, the rest the nearest ink | 5007 (81.3%) | the hair and rim lit, but yellow, red or magenta |
+| A palette per character row | 6156 (99.97%) | row 14 changes two logical colours in one blank |
+| **A palette per line** | **6156 (99.97%)** | **five splits (split 0, which always lands, changes nothing)** |
+| MODE 2 | all colours | 2128 lit pixels (34.6%) are half of a pair whose other half differs: widened or lost |
+
+No line shows more than four inks, and only two show four: line 55
+(a lone magenta pixel of the robe beside the green and cyan hair and
+the yellow) and line 63 (a lone cyan pixel of the hair beside magenta,
+green and yellow). Those two show as the nearest ink their line has
+(cyan and green). Every lit pixel stays lit and every other pixel is
+the original's colour.
+
+`tools/mkscreen.py` chooses the palettes: the most pixels in their own
+colour, then the fewest splits, each changing one logical colour, as the
+game's do. Each split is then moved to the middle of the lines it could
+land on without changing a pixel, at least two lines from the next (the
+interrupt sets the timer's period for the split after next). The splits
+share the game's timing (`SPLIT_FIRST`, the timer's periods from
+`title_latch` in place of `game_latch`). Swept with `tools/splitsweep.py`
+(2026-10-30): the title is clean from 70 to 116 on the B, 66 to 116 on
+the Master, around the game's 88 to 116; `make splits` checks it every
+pixel against the converter's picture.
+
+Rejected:
+
+- **Dithering.** Every colour the title uses is one the BBC has: the
+  problem is how many at once, not which. Dithering would mix them by
+  lighting and clearing pixels, and the lit pixels are the original's.
+- **MODE 2.** All the colours, but the art is fine single-pixel detail
+  (the dithered robe, the hair): a third of its lit pixels would change.
+- **Splits partway along a line** for the last two pixels: on line 55
+  the magenta pixel and the cyan are six microseconds apart, inside the
+  interrupt's own jitter and its four palette writes.

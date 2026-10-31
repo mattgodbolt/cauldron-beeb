@@ -328,7 +328,7 @@ FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
 .some
     LDA #0                          ; (the general way, nothing lit)
 .busy
-    TAX : LDA lit_nib,X : STA lit
+    TAX : LDA nlit,X : AND #15 : EOR #15 : STA lit    ; (its lit pixels)
     \ What stays lit keeps its colour.
     LDA bits : EOR #15 : AND lit : TAX
     LDA spread,X : AND (fb_scr),Y : STA out
@@ -341,12 +341,6 @@ FOR n = 0..SPR_REGIONS-1 : EQUB HI(SPR_START[n] - SPR_FROM[n]) : NEXT
     STA (fb_scr),Y
     RTS
 }
-\ A MODE 1 byte's 4 pixels, lit (non-zero) or not, as a nibble (the
-\ leftmost in bit 3).
-.lit_nib
-FOR b = 0..255
-    EQUB ((b >> 4) OR b) AND 15
-NEXT
 ZA_AUTO2 fb_scr                 ; sprite_halves' cell line
 ZA_AUTO1 fb_bits
 ZA_AUTO1 fb_glyph
