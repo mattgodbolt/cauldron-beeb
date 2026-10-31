@@ -124,18 +124,28 @@ ENDIF
 \ cell's scenery (attr_ptr, from cell_at, the cell's).
 .draw_cell
 {
-    JSR note_cell
     ZA_AUTO2 right              ; the right half: cell_scr + 8
+    ZA_AUTO1 any                ; the glyph's bytes ORed
     LDA cell_scr : ORA #8 : STA right
     LDA cell_scr+1 : STA right+1
+    LDA #0 : STA any
     LDY #7
 .line
+    LDA (glyph),Y : ORA any : STA any
     LDA (glyph),Y
     LSR A : LSR A : LSR A : LSR A : TAX
     LDA spread,X : AND ink_mask : STA (cell_scr),Y
     LDA (glyph),Y : AND #15 : TAX
     LDA spread,X : AND ink_mask : STA (right),Y
     DEY : BPL line
+    LDA any : BEQ blank
+    JMP note_cell
+    \ An empty glyph is noted as blank_glyph, which SPRITE knows on sight.
+.blank
+    LDA glyph : PHA : LDA glyph+1 : PHA
+    LDA #LO(blank_glyph) : STA glyph : LDA #HI(blank_glyph) : STA glyph+1
+    JSR note_cell
+    PLA : STA glyph+1 : PLA : STA glyph
     RTS
 }
 

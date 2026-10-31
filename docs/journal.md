@@ -429,3 +429,16 @@ Spectrum's geometry from `tools/play.mjs`'s) and says what plays.
 passes of each scenario it plays: the main loop's outdoors, so a door
 scenario's shots never show the caverns (the underground has its own
 loop). Breaking at `underground` (35524) on the test disc shows them.
+
+### SPRITE: the plain cells, the rows in one call
+
+A profile of the late passes in flight (the monsters all out, the
+passes over the pace) put SPRITE at nearly half the work, and almost
+every cell it draws has no scenery under it, or scenery in the sprite's
+own colour. There M is the sprite's own throughout: `draw_cell` notes an
+empty glyph as `blank_glyph`, and `sprite_segment` takes a plain loop
+for such a cell, without the scenery's glyph and colour per line. And
+most rows aren't shifted at all, so `seg_row`'s cost was its call and
+loop per row: it now does a segment's rows in one call, the graphic's
+index running on through them. The late passes' median work fell by
+about a tenth.

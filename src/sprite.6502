@@ -363,7 +363,6 @@ ZA_AUTO1 fb_own
     ZA_AUTO2 bgp
     ZA_AUTO1 first                  ; the segment's first line in its cell (0-7)
     ZA_AUTO1 last                   ; ... and one past its last
-    ZA_AUTO1 r
     ZA_AUTO2 scr                    ; the cell's line 0, its left half
     ZA_AUTO2 scr8                   ; ... its right
     ZA_AUTO1 sbyte                  ; the sprite's byte on this line
@@ -420,15 +419,8 @@ ZA_AUTO1 fb_own
     LDX spr_shift
     LDA seg_shift_lo,X : STA seg_row.rjump+1 : STA seg_row.ljump+1
     LDA seg_shift_hi,X : STA seg_row.rjump+2 : STA seg_row.ljump+2
-    LDA #0 : STA r
-.shift
-    LDA first : CLC : ADC r : TAX
-    JSR seg_row
-    LDA spr_gfx : CLC : ADC spr_w : STA spr_gfx
-    BCC same : INC spr_gfx+1
-.same
-    INC r
-    LDA first : CLC : ADC r : CMP last : BNE shift
+    LDA last : STA seg_row.stop
+    LDA first : JSR seg_row
     \ Each cell, down its lines, Y the line in the cell. Per half-line,
     \ with S the screen byte, B the sprite's 4 pixels spread and M the
     \ colour the pixels it lights take (the scenery's, home, where the
@@ -450,9 +442,17 @@ ZA_AUTO1 fb_own
     LDA (glop),Y : STA bgp : LDA (ghip),Y : STA bgp+1
     LDA scr : ORA #8 : STA scr8     ; (the right half: line + 8)
     LDA scr+1 : STA scr8+1
-    TYA : ASL A : ASL A : ASL A : CLC : ADC #LO(seg_buf) : STA column+1
-    LDA #HI(seg_buf) : ADC #0 : STA column+2
+    TYA : ASL A : ASL A : ASL A : CLC : ADC #LO(seg_buf) : STA column+1 : STA pcol+1 : STA pcol2+1
+    LDA #HI(seg_buf) : ADC #0 : STA column+2 : STA pcol+2 : STA pcol2+2
+    \ M is own throughout when the scenery's colour is the sprite's, or
+    \ the cell has no scenery (draw_cell notes an empty glyph as
+    \ blank_glyph): the plain loop.
     LDY first
+    LDA ho : BEQ plain
+    LDA bgp+1 : CMP #HI(blank_glyph) : BNE line
+    LDA bgp : CMP #LO(blank_glyph) : BNE line
+.plain
+    JMP pline
 .line
 .column
     LDA seg_buf,Y : BEQ next_line   ; (self-modified: this cell's column)
@@ -491,22 +491,57 @@ ZA_AUTO1 fb_own
 .right_empty
     LDA bm : AND m : STA (scr8),Y
     JMP next_line
+    \ The plain loop: as `line`, M being own.
+.pline
+.pcol
+    LDX seg_buf,Y : BEQ pnext       ; (self-modified: this cell's column)
+    LDA hi_spread,X : BEQ pright
+    STA bm
+    LDA (scr),Y : BEQ pl_empty
+    TAX : LDA nlit,X : AND own : ORA (scr),Y : AND bm : EOR (scr),Y : STA (scr),Y
+.pcol2
+    LDX seg_buf,Y                   ; (self-modified: as pcol)
+.pright
+    LDA lo_spread,X : BEQ pnext
+    STA bm
+    LDA (scr8),Y : BEQ pr_empty
+    TAX : LDA nlit,X : AND own : ORA (scr8),Y : AND bm : EOR (scr8),Y : STA (scr8),Y
+.pnext
+    INY : CPY last : BNE pline
+    JMP cell_done
+.pl_empty
+    LDA bm : AND own : STA (scr),Y
+    JMP pright                      ; (X still the sprite's byte)
+.pr_empty
+    LDA bm : AND own : STA (scr8),Y
+    JMP pnext
 }
 .seg_buf    SKIP 8 * (SPR_MAX_W + 1)
 
-\ One row at spr_gfx shifted right by spr_shift into seg_buf at X, 8 on
-\ a cell, as sprite_shift does it: a byte at a time in A, the bits it
-\ pushes out kept in t for the next cell. Shifts 1-4 go right through a
-\ chain of LSR A : ROR t entered at the shift's length, 5-7 left by 8 less
-\ (ASL A : ROL t), the jumps set per segment (seg_rjump, seg_ljump).
+\ The segment's rows at spr_gfx, lines A to stop in the cell, shifted
+\ right by spr_shift into seg_buf, a cell's line y at 8 * the cell + y,
+\ as sprite_shift does it: a byte at a time in A, the bits it pushes out
+\ kept in t for the next cell. Shifts 1-4 go right through a chain of
+\ LSR A : ROR t entered at the shift's length, 5-7 left by 8 less
+\ (ASL A : ROL t), the jumps set per segment (rjump, ljump). spr_gfx
+\ goes on past the rows.
 .seg_row
 {
+    ZA_AUTO1 stop                   ; one past the last line
+
     ZA_AUTO1 t
     ZA_AUTO1 prev                   ; the bits the last byte left for this cell
     ZA_AUTO1 a_next
-    LDY #0 : STY prev
+    ZA_AUTO1 line                   ; the row's line in the cell
+    ZA_AUTO1 row_end                ; Y past the row's last byte
+    STA line
+    LDY #0
     LDA spr_shift : BEQ plain
     CMP #5 : BCS left
+.rrow
+    LDX line
+    LDA #0 : STA prev
+    TYA : CLC : ADC spr_w : STA row_end
 .rbyte
     LDA #0 : STA t
     LDA (spr_gfx),Y
@@ -520,15 +555,24 @@ ZA_AUTO1 fb_own
     ORA prev : STA seg_buf,X
     LDA t : STA prev
     TXA : CLC : ADC #8 : TAX
-    INY : CPY spr_w : BNE rbyte
+    INY : CPY row_end : BNE rbyte
     LDA prev : STA seg_buf,X        ; (the extra cell a shift spills into)
-    RTS
+    INC line : LDA line : CMP stop : BNE rrow
+    JMP done
 .plain
+    LDX line
+    TYA : CLC : ADC spr_w : STA row_end
+.pbyte
     LDA (spr_gfx),Y : STA seg_buf,X
     TXA : CLC : ADC #8 : TAX
-    INY : CPY spr_w : BNE plain
-    RTS
+    INY : CPY row_end : BNE pbyte
+    INC line : LDA line : CMP stop : BNE plain
+    JMP done
 .left
+.lrow
+    LDX line
+    LDA #0 : STA prev
+    TYA : CLC : ADC spr_w : STA row_end
 .lbyte
     LDA #0 : STA t
     LDA (spr_gfx),Y
@@ -542,8 +586,14 @@ ZA_AUTO1 fb_own
     LDA t : ORA prev : STA seg_buf,X
     LDA a_next : STA prev
     TXA : CLC : ADC #8 : TAX
-    INY : CPY spr_w : BNE lbyte
+    INY : CPY row_end : BNE lbyte
     LDA prev : STA seg_buf,X
+    INC line : LDA line : CMP stop : BNE lrow
+    \ On past the rows: Y is their bytes.
+.done
+    TYA : CLC : ADC spr_gfx : STA spr_gfx
+    BCC same : INC spr_gfx+1
+.same
     RTS
 }
 \ seg_row's chain entry for each shift (0: none; 5-7: left by 8 less).
