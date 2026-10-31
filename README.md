@@ -125,6 +125,6 @@ make check      # the checks: drawing, sprites, the logic, pass by pass
 
 ## Thanks
 
-Kieran Connell for the port kit and jsbeeb-mcp, Rich Talbot-Watkins for
+Kieran Connell for the port kit, Rich Talbot-Watkins for
 baron, Richard Dymond for SkoolKit, and Spectrum Computing (ZXDB) for
 the original and its maps.
