@@ -536,7 +536,9 @@ ZA_AUTO1 fb_own
     ZA_AUTO1 row_end                ; Y past the row's last byte
     STA line
     LDY #0
-    LDA spr_shift : BEQ plain
+    LDA spr_shift : BNE shifted
+    JMP plain
+.shifted
     CMP #5 : BCS left
 .rrow
     LDX line
@@ -558,15 +560,6 @@ ZA_AUTO1 fb_own
     INY : CPY row_end : BNE rbyte
     LDA prev : STA seg_buf,X        ; (the extra cell a shift spills into)
     INC line : LDA line : CMP stop : BNE rrow
-    JMP done
-.plain
-    LDX line
-    TYA : CLC : ADC spr_w : STA row_end
-.pbyte
-    LDA (spr_gfx),Y : STA seg_buf,X
-    TXA : CLC : ADC #8 : TAX
-    INY : CPY row_end : BNE pbyte
-    INC line : LDA line : CMP stop : BNE plain
     JMP done
 .left
 .lrow
@@ -595,6 +588,42 @@ ZA_AUTO1 fb_own
     BCC same : INC spr_gfx+1
 .same
     RTS
+    \ Unshifted, as most rows are: a loop for each width, X the line.
+.plain
+    LDX spr_w
+    LDA plain_lo-1,X : STA pjump+1
+    LDA plain_hi-1,X : STA pjump+2
+    LDX line
+.pjump
+    JMP p1                          ; (self-modified: the width's loop)
+    ZA_CANJUMP p1, p2, p3, p4
+.p1
+    LDA (spr_gfx),Y : STA seg_buf,X : INY
+    INX : CPX stop : BNE p1
+    JMP done
+.p2
+    LDA (spr_gfx),Y : STA seg_buf,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+8,X : INY
+    INX : CPX stop : BNE p2
+    JMP done
+.p3
+    LDA (spr_gfx),Y : STA seg_buf,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+8,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+16,X : INY
+    INX : CPX stop : BNE p3
+    JMP done
+.p4
+    LDA (spr_gfx),Y : STA seg_buf,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+8,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+16,X : INY
+    LDA (spr_gfx),Y : STA seg_buf+24,X : INY
+    INX : CPX stop : BNE p4
+    JMP done
+.plain_lo
+    EQUB LO(p1), LO(p2), LO(p3), LO(p4)
+.plain_hi
+    EQUB HI(p1), HI(p2), HI(p3), HI(p4)
+    ASSERT SPR_MAX_W = 4
 }
 \ seg_row's chain entry for each shift (0: none; 5-7: left by 8 less).
 .seg_shift_lo

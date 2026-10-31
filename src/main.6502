@@ -206,6 +206,9 @@ ENDIF
 }
 .shown                              ; (global: the tools run to here)
     JSR any_key : BEQ shown
+    \ PRINT's flags as the ROM leaves them (Work isn't cleared: these held
+    \ whatever the file left there).
+    LDA #0 : STA mask_p : STA mask_t : STA p_flag
 IF DEFINED(VIEWER)
     JMP viewer
 ELSE
@@ -213,8 +216,7 @@ ELSE
     \ system variables as its loader left them.
     JSR init_splits
     LDA #6 : STA attr_p : STA attr_t            ; (its INK 6, PAPER 0)
-    LDA #0 : STA mask_p : STA mask_t : STA p_flag
-    STA rnd_seed : STA rnd_seed+1 : STA frames : STA frames+1
+    LDA #0 : STA rnd_seed : STA rnd_seed+1 : STA frames : STA frames+1
     JSR chars_rom
     LDA #&FF : STA land_shown       ; (no landscape shown yet)
     LDA #0 : STA menu_mode

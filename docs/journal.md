@@ -442,3 +442,11 @@ most rows aren't shifted at all, so `seg_row`'s cost was its call and
 loop per row: it now does a segment's rows in one call, the graphic's
 index running on through them. The late passes' median work fell by
 about a tenth.
+
+Then the unshifted rows, the most common, copied to `seg_buf` through a
+loop for each width (1-4 bytes), unrolled: a pass late in flight about
+at the pace's 200K now, from 227K before these steps. On the way the
+viewer stopped drawing: PRINT's flags (`p_flag`, `mask_p`, `mask_t`)
+were set only on the game's path, and the viewer's held whatever the
+file left in Work, INVERSE once the code moved. They're cleared on
+both paths now.
