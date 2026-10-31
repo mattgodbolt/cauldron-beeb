@@ -79,3 +79,27 @@ So at decision 6's 5 frames the port is as fast as the original standing
 and faster in flight; the passes that overrun it are the original's
 slow passes too (more monsters, the spikes every few passes), and still
 quicker than the original's.
+
+## Later in flight (2026-10-30)
+
+Over a longer flight the monsters accumulate, and passes 30-55 of a
+flight up and right sat over the pace: SPRITE nearly half their work.
+Three steps took their median work from about 227K cycles to about
+201K, the pace itself (measured with an exact per-pass profile, the
+same run each time):
+
+1. Cells with no scenery, or scenery in the sprite's own colour (nearly
+   all of them), take a plain loop: M is the sprite's own colour, so
+   the scenery's glyph and colour aren't read per line (`blank_glyph`).
+2. `seg_row` does a segment's rows in one call.
+3. Unshifted rows, the most common, are copied by a loop unrolled for
+   the sprite's width.
+
+The passes still well over the pace are mostly the sound: BEEPER's
+chirps stop the game while they play, as the original's do (decision
+8). Printing the score's divides now skip a small dividend's empty top
+byte.
+
+Pass times vary from build to build with the monsters RND brings, since
+a pass's timing moves the seed; compare builds on the same profile run,
+not on single passtime runs.
